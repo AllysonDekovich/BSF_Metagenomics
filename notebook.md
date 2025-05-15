@@ -116,6 +116,7 @@ for file in glob.glob(path_to_files):
 			count = SeqIO.convert(in_handle, "fastq", out_handle, "fasta")
 			print("Converted " + str(count) + " records from " + filename + " to " + prefix + ".fasta")
 ```
+**Note**: only R1 reads were used in this analysis because the program assumes independence of events between sequencing reads.
 
 SLURM script to utilize HPC resources:
 
