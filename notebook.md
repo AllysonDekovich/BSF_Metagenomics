@@ -143,11 +143,11 @@ Perform the redundancy estimation:
 #!/bin/bash
 #SBATCH --job-name=nonpareil_redundancy
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=10
 #SBATCH -A ACF-UTK0032
 #SBATCH --partition=long
 #SBATCH --qos=long
-#SBATCH --time=48:00:00
+#SBATCH --time=144:00:00
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --mail-user=adekovic@vols.utk.edu
 #SBATCH --array=1-9
