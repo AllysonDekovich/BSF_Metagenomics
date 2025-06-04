@@ -165,7 +165,7 @@ nonpareil -s "$infile" -T alignment -f fasta -b "$outfile"
 *`-f`: format of the input file<br/>
 *`-b`: prefix for the output files
 
-**kmer estimation - alignment method was taking too long
+**kmer estimation - alignment method was taking too long**
 
 ```
 #!/bin/bash
