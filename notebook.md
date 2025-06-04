@@ -141,7 +141,7 @@ Perform the redundancy estimation:
 
 ```
 #!/bin/bash
-#SBATCH --job-name=nonpareil_redundancy
+#SBATCH --job-name=nonpareil_redundancy_alignment
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=10
 #SBATCH -A ACF-UTK0032
@@ -164,3 +164,40 @@ nonpareil -s "$infile" -T alignment -f fasta -b "$outfile"
 *`-T`: _nonpareil_ algorithm. I choose `alignment` as it is more accurate, however, it takes much longer to run/more computational resources<br/>
 *`-f`: format of the input file<br/>
 *`-b`: prefix for the output files
+
+**kmer estimation - alignment method was taking too long
+
+```
+#!/bin/bash
+#SBATCH --job-name=nonpareil_redundancy_kmer
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=10
+#SBATCH -A ACF-UTK0032
+#SBATCH --partition=long
+#SBATCH --qos=long
+#SBATCH --time=144:00:00
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=adekovic@vols.utk.edu
+#SBATCH --array=1-9
+
+infile=$(sed -n -e "${SLURM_ARRAY_TASK_ID} p" filenames.txt)
+#echo $infile
+
+outfile=$(basename "$infile" | sed 's/.fasta//')
+#echo $outfile
+
+nonpareil -s "$infile" -T kmer -k 20 -f fastq -b "$outfile"
+```
+
+Nothing has changed, except for the `kmer` mode and fastq instead of fasta (the `kmer` mode uses alignment scores to help with estimations). Originally, I kept getting this error:
+```
+Nonpareil v3.5.5
+[ 0.0] WARNING: The kmer kernel implements an error correction function only compatible with FastQ
+[ 0.0] Reading DM_C_T0_r1_Owings_S13_L001_R1_trimmed.fasta
+[ 0.0] Picking 10000 random sequences
+[ 0.0] Counting Kmers
+Fatal error:
+Reads are required to have a minimum length of kmer size
+[ 0.3] Fatal error: Reads are required to have a minimum length of kmer size
+```
+The default kmer size is 24bp, and it turns out I have some reads that were 20 bp, so the program was failing. I was able to get it working by specifying a different kmer size with `-k`.
