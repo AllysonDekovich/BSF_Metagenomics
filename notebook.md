@@ -238,12 +238,15 @@ np_curves <- Nonpareil.set(as.vector(samples$File), col=samples$Color, labels=sa
 Key interpretative elements of the plots:
 * Curve shape: the steeper the intial rise, the lower the community diversity.<br>
 * Saturation point: where the curve plateaus indicates the maximum achievable coverage for the sequencing effort.<br>
-* Diversity arrows: indicate sequence diversity (Nd) values for each sample.<br>
-	* higher Nd values (skewed right) indicate more diverse samples, which require more sequencing effort than less diverse (skewed left) samples.
+* Diversity arrows: indicate sequence diversity (`Nd`) values for each sample.<br>
+	* higher `Nd` values (skewed right) indicate more diverse samples, which require more sequencing effort than less diverse (skewed left) samples.
 
-My results indicate moderately complex communities (steep rise around 1 Mbp and high Nd values) in each sample, and the community diversity seems to be similar in all samples (clusters of Nd values and curves). However, the curves did not reach a plateau (or just barely did at the end) - if I were to do MAG assembly, I would likely be able to assemble decent MAGs for abundant/common species, but I would struggle with rare species. 
+My results indicate moderately complex communities (steep rise around 1 Mbp and high Nd values) in each sample, and the community diversity seems to be similar in all samples (clusters of `Nd` values and curves). However, the curves did not reach a plateau (or just barely did at the end) - if I were to do MAG assembly, I would likely be able to assemble decent MAGs for abundant/common species, but I would struggle with rare species. 
 
 I want to do both analyses (taxonomic profiling/annotation on raw reads vs. MAGs). I think the former will lead to better characterization of less abundant taxa, so I will try that first.
 
 **_KneadData_**
-Use `KneadData` to remove host (_Bos taurus_) contamination for more accurate microbial profiling. I did not do this for the nonpareil curve, so I will revisit later. If anything, host contamination (if any) will artificially inflate the coverage. I decided not to start with MAG assembly anyways, however, the Nd values and the location of the curves may change (i.e., not overlapping), indicating change in community composition.
+
+Use `KneadData` to remove host (_Bos taurus_) contamination for more accurate microbial profiling.<br>
+
+**I did not do this when calculating the initial `nonpareil` curves, will revisit later.** Host contamination (if any) will artificially inflate the coverage. I decided not to start with MAG assembly anyways, however, the `Nd` values and the location of the curves may change (i.e., not overlapping), indicating change in community composition.
