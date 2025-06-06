@@ -201,3 +201,49 @@ Reads are required to have a minimum length of kmer size
 [ 0.3] Fatal error: Reads are required to have a minimum length of kmer size
 ```
 The default kmer size is 24bp, and it turns out I have some reads that were 20 bp, so the program was failing. I was able to get it working by specifying a different kmer size with `-k`.
+
+**Creating and Interpreting the Nonpareil curves**
+
+To plot the curves for samples on a single plot, I needed to create a text file containing the sample names, an alias for labeling, and a color hex code.
+
+```
+File	Name	Color
+DM_C_T0_r1_Owings_S13_L001_R1_001.fastq.gz.npo	T0_r1	"#D27D2D"
+DM_C_T0_r2_Owings_S14_L001_R1_001.fastq.gz.npo	T0_r2	"#7B3F00"
+DM_C_T0_r3_Owings_S15_L001_R1_001.fastq.gz.npo	T0_r3	"#6E260E"
+DM_T3_r1_Owings_S16_L001_R1_001.fastq.gz.npo	T3_r1	"#FF69B4"
+DM_T3_r3_Owings_S17_L001_R1_001.fastq.gz.npo	T3_r3	"#FF00FF"
+DM_T3_r4_Owings_S18_L001_R1_001.fastq.gz.npo	T3_r4	"#F8C8DC"
+DM_T7_r1_Owings_S19_L001_R1_001.fastq.gz.npo	T7_r1	"#0047AB"
+DM_T7_r2_Owings_S20_L001_R1_001.fastq.gz.npo	T7_r2	"#6495ED"
+DM_T7_r4_Owings_S21_L001_R1_001.fastq.gz.npo	T7_r4	"#CCCCFF"
+```
+Run an `Rscript` to plot the curves:
+```
+library(Nonpareil)
+
+# read in the sample file, which gives each sample a color for easy identification.
+samples <- read.table('npo_samples.txt', sep='\t', header=TRUE, as.is=TRUE)
+
+# Create a single plot that visualizes the metagenomic coverage for all samples at once.
+np_curves <- Nonpareil.set(as.vector(samples$File), col=samples$Color, labels=samples$Name, plot.opts=list(plot.observed=FALSE))
+```
+
+**Coverage curves from `nonpareil`**
+![Nonpareil output: coverage curves per sample](https://github.com/AllysonDekovich/BSF_Metagenomics/blob/main/DM_T0_T3_T7_coverage_curves-1.png)
+
+* The x-axis plots the log-transformed sequencing effort, which is the number of reads or base pairs sequenced.<br/>
+* The y-axis plots the estimated coverage of the community diversity or complexity on a 0 to 1 scale.
+
+Key interpretative elements of the plots:
+* Curve shape: the steeper the intial rise, the lower the community diversity.<br>
+* Saturation point: where the curve plateaus indicates the maximum achievable coverage for the sequencing effort.<br>
+* Diversity arrows: indicate sequence diversity (Nd) values for each sample.<br>
+	* higher Nd values (skewed right) indicate more diverse samples, which require more sequencing effort than less diverse (skewed left) samples.
+
+My results indicate moderately complex communities (steep rise around 1 Mbp and high Nd values) in each sample, and the community diversity seems to be similar in all samples (clusters of Nd values and curves). However, the curves did not reach a plateau (or just barely did at the end) - if I were to do MAG assembly, I would likely be able to assemble decent MAGs for abundant/common species, but I would struggle with rare species. 
+
+I want to do both analyses (taxonomic profiling/annotation on raw reads vs. MAGs). I think the former will lead to better characterization of less abundant taxa, so I will try that first.
+
+**_KneadData_**
+Use `KneadData` to remove host (_Bos taurus_) contamination for more accurate microbial profiling. I did not do this for the nonpareil curve, so I will revisit later. If anything, host contamination (if any) will artificially inflate the coverage. I decided not to start with MAG assembly anyways, however, the Nd values and the location of the curves may change (i.e., not overlapping), indicating change in community composition.
