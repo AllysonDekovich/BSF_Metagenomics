@@ -247,6 +247,59 @@ I want to do both analyses (taxonomic profiling/annotation on raw reads vs. MAGs
 
 **_KneadData_**
 
+Use `bowtie` to index the _Bos taurus_ reference genome prior to removing host contaminants.
+```
+#!/bin/bash
+#SBATCH --job-name=bowtie_index
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=4
+#SBATCH -A ACF-UTK0032
+#SBATCH --partition=campus
+#SBATCH --qos=campus
+#SBATCH --time=24:00:00
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=adekovic@vols.utk.edu
+
+
+# run bowtie-build to index the Bos genome
+bowtie2-build ./bos_reference_genome/GCF_002263795.3_ARS-UCD2.0_genomic.fna.gz \
+bos_taurus
+```
+
+
 Use `KneadData` to remove host (_Bos taurus_) contamination for more accurate microbial profiling.<br>
 
-**I did not do this when calculating the initial `nonpareil` curves, will revisit later.** Host contamination (if any) will artificially inflate the coverage. I decided not to start with MAG assembly anyways, however, the `Nd` values and the location of the curves may change (i.e., not overlapping), indicating change in community composition.
+```
+#!/bin/bash
+#SBATCH --job-name=kneaddata
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=4
+#SBATCH -A ACF-UTK0032
+#SBATCH --partition=campus
+#SBATCH --qos=campus
+#SBATCH --time=24:00:00
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=adekovic@vols.utk.edu
+#SBATCH --array=1-9
+
+# Only select lines with _R1_001.fastq.gz and pick the correct one by SLURM_ARRAY_TASK_ID
+infile1=$(sed -n "${SLURM_ARRAY_TASK_ID}p" filenames.txt)
+echo "R1: $infile1"
+
+# Replace _R1_001.fastq.gz with _R2_001.fastq.gz
+infile2=$(basename "$infile1" | sed 's/_R1_trimmed.fastq.gz/_R2_trimmed.fastq.gz/')
+echo "R2: $infile2"
+
+#create outfile basename only
+outfile=$(basename "$infile1" | sed 's/_R1_trimmed.fastq.gz//')
+echo "outfile: $outfile"
+
+# run kneaddata
+
+kneaddata \
+--input1 $infile1 \
+--input2 $infile2 \
+-db ./bos_reference_genome \
+-o ${outfile}_host_trimmed
+```
+
