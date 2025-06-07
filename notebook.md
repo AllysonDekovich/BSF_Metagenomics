@@ -183,10 +183,10 @@ nonpareil -s "$infile" -T alignment -f fasta -b "$outfile"
 infile=$(sed -n -e "${SLURM_ARRAY_TASK_ID} p" filenames.txt)
 #echo $infile
 
-outfile=$(basename "$infile" | sed 's/.fasta//')
+outfile=$(basename "$infile" | sed 's/.fastq.gz//')
 #echo $outfile
 
-nonpareil -s "$infile" -T kmer -k 20 -f fastq -b "$outfile"
+nonpareil -s "$infile" -T kmer -k 15 -f fastq -b "$outfile"
 ```
 
 Nothing has changed, except for the `kmer` mode and fastq instead of fasta (the `kmer` mode uses alignment scores to help with estimations). Originally, I kept getting this error:
@@ -200,7 +200,7 @@ Fatal error:
 Reads are required to have a minimum length of kmer size
 [ 0.3] Fatal error: Reads are required to have a minimum length of kmer size
 ```
-The default kmer size is 24bp, and it turns out I have some reads that were 20 bp, so the program was failing. I was able to get it working by specifying a different kmer size with `-k`.
+The default kmer size is 24bp, and it turns out I have some reads that were 15 bp, so the program was failing. I was able to get it working by specifying a different kmer size with `-k`.
 
 **Creating and Interpreting the Nonpareil curves**
 
@@ -208,15 +208,15 @@ To plot the curves for samples on a single plot, I needed to create a text file 
 
 ```
 File	Name	Color
-DM_C_T0_r1_Owings_S13_L001_R1_001.fastq.gz.npo	T0_r1	"#D27D2D"
-DM_C_T0_r2_Owings_S14_L001_R1_001.fastq.gz.npo	T0_r2	"#7B3F00"
-DM_C_T0_r3_Owings_S15_L001_R1_001.fastq.gz.npo	T0_r3	"#6E260E"
-DM_T3_r1_Owings_S16_L001_R1_001.fastq.gz.npo	T3_r1	"#FF69B4"
-DM_T3_r3_Owings_S17_L001_R1_001.fastq.gz.npo	T3_r3	"#FF00FF"
-DM_T3_r4_Owings_S18_L001_R1_001.fastq.gz.npo	T3_r4	"#F8C8DC"
-DM_T7_r1_Owings_S19_L001_R1_001.fastq.gz.npo	T7_r1	"#0047AB"
-DM_T7_r2_Owings_S20_L001_R1_001.fastq.gz.npo	T7_r2	"#6495ED"
-DM_T7_r4_Owings_S21_L001_R1_001.fastq.gz.npo	T7_r4	"#CCCCFF"
+DM_C_T0_r1_Owings_S13_L001_R1_trimmed.npo	T0_r1	"#D27D2D"
+DM_C_T0_r2_Owings_S13_L001_R1_trimmed.npo	T0_r2	"#7B3F00"
+DM_C_T0_r3_Owings_S13_L001_R1_trimmed.npo	T0_r3	"#6E260E"
+DM_T3_r1_Owings_S16_L001_R1_trimmed.npo		T3_r1	"#FF69B4"
+DM_T3_r3_Owings_S17_L001_R1_trimmed.npo		T3_r3	"#FF00FF"
+DM_T3_r4_Owings_S18_L001_R1_trimmed.npo		T3_r4	"#F8C8DC"
+DM_T7_r1_Owings_S19_L001_R1_trimmed.npo		T7_r1	"#0047AB"
+DM_T7_r2_Owings_S20_L001_R1_trimmed.npo		T7_r2	"#6495ED"
+DM_T7_r4_Owings_S21_L001_R1_trimmed.npo		T7_r4	"#CCCCFF"
 ```
 Run an `Rscript` to plot the curves:
 ```
