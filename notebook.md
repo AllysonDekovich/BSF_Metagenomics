@@ -230,7 +230,7 @@ np_curves <- Nonpareil.set(as.vector(samples$File), col=samples$Color, labels=sa
 ```
 
 **Coverage curves from `nonpareil`**
-![Nonpareil output: coverage curves per sample](https://github.com/AllysonDekovich/BSF_Metagenomics/blob/main/DM_T0_T3_T7_coverage_curves-1.png)
+![Nonpareil output: coverage curves per sample](https://github.com/AllysonDekovich/BSF_Metagenomics/blob/main/DM_T0_T3_T7_pre_host_trim-1.png)
 
 * The x-axis plots the log-transformed sequencing effort, which is the number of reads or base pairs sequenced.<br/>
 * The y-axis plots the estimated coverage of the community diversity or complexity on a 0 to 1 scale.
