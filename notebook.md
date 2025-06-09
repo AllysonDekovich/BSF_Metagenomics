@@ -241,9 +241,11 @@ Key interpretative elements of the plots:
 * Diversity arrows: indicate sequence diversity (`Nd`) values for each sample.<br>
 	* higher `Nd` values (skewed right) indicate more diverse samples, which require more sequencing effort than less diverse (skewed left) samples.
 
-My results indicate moderately complex communities (steep rise around 1 Mbp and high Nd values) in each sample, and the community diversity seems to be similar in all samples (clusters of `Nd` values and curves). However, the curves did not reach a plateau (or just barely did at the end) - if I were to do MAG assembly, I would likely be able to assemble decent MAGs for abundant/common species, but I would struggle with rare species. 
+According to this plot, it seems like all of my samples are good candidates for MAG assembly! All samples seem to plateau around the upper limit of the y-axis. **Our sequencing effort has captured about 95-100% of the abundance-weighted DNA in each community (90% coverage is recommended by standard benchmarking).** 
 
-I want to do both analyses (taxonomic profiling/annotation on raw reads vs. MAGs). I think the former will lead to better characterization of less abundant taxa, so I will try that first.
+Additionally, all samples seem to be quite diverse and experience similar diversity levels -- the `Nd` values all cluster together and are skewed more toward the right, indicating deeper sequencing is needed to fully capture all of the diversity present in the samples.
+
+So far so good! I am now going to remove host contamination with `kneaddata` (see below). To double check that our sequencing effort wasn't inflated because of host contamination, I will also re-run this analysis on host trimmed reads.
 
 **_KneadData_**
 
