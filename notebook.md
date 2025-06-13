@@ -321,5 +321,41 @@ This error indicates that **none** of the reads aligned to the reference genome.
 I think this is the likely reason, so I will continue on with the initial files for these, but the trimmed ones for the others. I will be able to see later down the line if there are any issues. 
 
 **`Nonpareil` coverage curves for the host trimmed samples:**
-![Nonpareil output: coverage curves per sample on host trimmed samples]()
+![Nonpareil output: coverage curves per sample on host trimmed samples](https://github.com/AllysonDekovich/BSF_Metagenomics/blob/main/DM_T0_T3_T7_host_trim-1.png)
+
+**_MEGAHIT_**
+
+Since the samples have more than enough coverage, I will go ahead with MAG construction. I will be using `MEGAHIT` and I will assemble a single MAG for each time point. Since we have three biological replicates for each timepoint, I can combine them all in a co-assembly. The benefits of a co-assembly are:
+
+* **Improved Genome Recovery**: recovers a higher fraction of the genome more than a single assembly alone.<br>
+* **Enhanced Continuity**: Produces less fragmented assemblies and longer contigs.<br>
+* **Efficiency**: By pooling replicates into a single MAG assembly, the computational effort decreases and it is simpler to combine now than to wait until after MAG assembly.
+
+`SLURM` script to run `MEGAHIT`:
+```
+#!/bin/bash
+#SBATCH --job-name=megahit_T0
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=12
+#SBATCH --mem=70G
+#SBATCH -A ACF-UTK0032
+#SBATCH --partition=long
+#SBATCH --qos=long
+#SBATCH --time=144:00:00
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=adekovic@vols.utk.edu
+
+
+megahit \
+-1 DM_C_T0_r1_Owings_S13_L001_R1_trimmed_kneaddata_paired_1.fastq,DM_C_T0_r2_Owings_S14_L001_R1_trimmed_kneaddata_paired_1.fastq,DM_C_T0_r3_Owings_S15_L001_R1_trimmed_kneaddata_paired_1.fastq \
+-2 DM_C_T0_r1_Owings_S13_L001_R1_trimmed_kneaddata_paired_2.fastq,DM_C_T0_r2_Owings_S14_L001_R1_trimmed_kneaddata_paired_2.fastq,DM_C_T0_r3_Owings_S15_L001_R1_trimmed_kneaddata_paired_2.fastq \
+-t 12 \
+-m 70000000000 \
+-o DM_C_T0
+```
+
+I created similar scripts for T3 and T7 and submitted them separately because making an array would have taken too long.
+
+
+
 
