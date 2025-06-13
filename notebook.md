@@ -276,6 +276,7 @@ Use `KneadData` to remove host (_Bos taurus_) contamination for more accurate mi
 #SBATCH --job-name=kneaddata
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=4
+#SBATCH --mem=70G
 #SBATCH -A ACF-UTK0032
 #SBATCH --partition=campus
 #SBATCH --qos=campus
@@ -304,4 +305,21 @@ kneaddata \
 -db ./bos_reference_genome \
 -o ${outfile}_host_trimmed
 ```
+
+After running this analysis, host reads were successfull trimmed from all samples EXCEPT: DM_T3_r3 and DM_T7_r1. I got these error messages:
+```
+Error message returned from bowtie2 :
+521367425 reads; of these:
+  521367425 (100.00%) were unpaired; of these:
+    520840270 (99.90%) aligned 0 times
+    219704 (0.04%) aligned exactly 1 time
+    307451 (0.06%) aligned >1 times
+0.10% overall alignment rate
+```
+This error indicates that **none** of the reads aligned to the reference genome. There are three possible reasons that this could fail. The first being that I used an out-of-date or incorrect reference genome -- however, I do not believe this is the case, as I used the most up-to-date _Bos taurus_ reference genome and it worked well on all of the other samples. The second reason could be that the R1/R2 pair files were not matched properly. I looked back in the log file, and it looks like the proper R1/R2 files were used as input for both of these runs. The third and final reason could be biological: that these samples had minimal host DNA in general / was mostly bacterial, which would make sense as to why they did not map properly. 
+
+I think this is the likely reason, so I will continue on with the initial files for these, but the trimmed ones for the others. I will be able to see later down the line if there are any issues. 
+
+**`Nonpareil` coverage curves for the host trimmed samples:**
+![Nonpareil output: coverage curves per sample on host trimmed samples]()
 
