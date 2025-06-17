@@ -1,7 +1,6 @@
 This repository contains all files and scripts used in the following 
 paper: insert citation here.
 
-
 Each directory houses an individual analysis and is organized into 
 multiple subdirectories:
 * raw_data: This subdirectory type contains the original output files 
