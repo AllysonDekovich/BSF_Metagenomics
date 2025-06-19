@@ -331,31 +331,100 @@ Since the samples have more than enough coverage, I will go ahead with MAG const
 * **Enhanced Continuity**: Produces less fragmented assemblies and longer contigs.<br>
 * **Efficiency**: By pooling replicates into a single MAG assembly, the computational effort decreases and it is simpler to combine now than to wait until after MAG assembly.
 
-`SLURM` script to run `MEGAHIT`:
+`SLURM` scripts to run `MEGAHIT` for `T0`, `T3`, and `T7`:
 ```
 #!/bin/bash
 #SBATCH --job-name=megahit_T0
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=12
-#SBATCH --mem=70G
+#SBATCH --mem=260G
 #SBATCH -A ACF-UTK0032
-#SBATCH --partition=long
-#SBATCH --qos=long
+#SBATCH --partition=long-bigmem
+#SBATCH --qos=long-bigmem
 #SBATCH --time=144:00:00
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --mail-user=adekovic@vols.utk.edu
 
 
 megahit \
--1 DM_C_T0_r1_Owings_S13_L001_R1_trimmed_kneaddata_paired_1.fastq,DM_C_T0_r2_Owings_S14_L001_R1_trimmed_kneaddata_paired_1.fastq,DM_C_T0_r3_Owings_S15_L001_R1_trimmed_kneaddata_paired_1.fastq \
--2 DM_C_T0_r1_Owings_S13_L001_R1_trimmed_kneaddata_paired_2.fastq,DM_C_T0_r2_Owings_S14_L001_R1_trimmed_kneaddata_paired_2.fastq,DM_C_T0_r3_Owings_S15_L001_R1_trimmed_kneaddata_paired_2.fastq \
+-1 DM_C_T0_r1_Owings_S13_L001_R1_trimmed_kneaddata_paired_1.fastq,DM_C_T0_r2_Ow$
+-2 DM_C_T0_r1_Owings_S13_L001_R1_trimmed_kneaddata_paired_2.fastq,DM_C_T0_r2_Ow$
 -t 12 \
--m 70000000000 \
+-m 260000000000 \
 -o DM_C_T0
 ```
 
-I created similar scripts for T3 and T7 and submitted them separately because making an array would have taken too long.
+```
+#!/bin/bash
+#SBATCH --job-name=megahit_T3
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=12
+#SBATCH --mem=260G
+#SBATCH -A ACF-UTK0032
+#SBATCH --partition=long-bigmem
+#SBATCH --qos=long-bigmem
+#SBATCH --time=144:00:00
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=adekovic@vols.utk.edu
 
 
+
+megahit \
+-1 DM_T3_r1_Owings_S16_L001_R1_trimmed_kneaddata_paired_1.fastq,DM_T3_r3_Owings_S17_L001_R1_trimmed_kneaddata.trimmed.1.fastq,DM_T3_r4_Owings_S18_L001_R1_trimmed_kneaddata_paired_1.fastq \
+-2 DM_T3_r1_Owings_S16_L001_R1_trimmed_kneaddata_paired_2.fastq,DM_T3_r3_Owings_S17_L001_R1_trimmed_kneaddata.trimmed.2.fastq,DM_T3_r4_Owings_S18_L001_R1_trimmed_kneaddata_paired_2.fastq \
+-t 12 \
+-m 260000000000 \
+-o DM_T3
+```
+
+```
+#!/bin/bash
+#SBATCH --job-name=megahit_T7
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=12
+#SBATCH --mem=260G
+#SBATCH -A ACF-UTK0032
+#SBATCH --partition=long-bigmem
+#SBATCH --qos=long-bigmem
+#SBATCH --time=144:00:00
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=adekovic@vols.utk.edu
+
+
+megahit \
+-1 DM_T7_r1_Owings_S19_L001_R1_trimmed_kneaddata.trimmed.1.fastq,DM_T7_r2_Owings_S20_L001_R1_trimmed_kneaddata_paired_1.fastq,DM_T7_r4_Owings_S21_L001_R1_trimmed_kneaddata_paired_1.fastq \
+-2 DM_T7_r1_Owings_S19_L001_R1_trimmed_kneaddata.trimmed.2.fastq,DM_T7_r2_Owings_S20_L001_R1_trimmed_kneaddata_paired_2.fastq,DM_T7_r4_Owings_S21_L001_R1_trimmed_kneaddata_paired_2.fastq \
+-t 12 \
+-m 260000000000 \
+-o DM_T7
+```
+
+**_QUAST_**
+
+Before binning and taxonomic identification, I will use `QUAST` to assess the quality of each generated assembly.
+
+```
+#!/bin/bash
+#SBATCH --job-name=quast
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=12
+#SBATCH -A ACF-UTK0032
+#SBATCH --partition=long
+#SBATCH --qos=long
+#SBATCH --time=144:00:00
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=adekovic@vols.utk.edu
+#SBATCH --array=1-2
+
+# isolate the metagenome fasta files to set up the array
+genome=$(grep ".final.contigs.fa" filenames.txt | sed -n "${SLURM_ARRAY_TASK_ID}p")
+echo "Evaluated genome: $genome"
+
+# create basename for output directory
+output=$(basename "$genome" | sed 's/.final.contigs.fa//')
+
+# run metaquast to evaluate assembly quality
+metaquast $genome -o ${output}_QC
+```
 
 
