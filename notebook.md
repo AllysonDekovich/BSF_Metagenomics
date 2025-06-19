@@ -230,7 +230,7 @@ np_curves <- Nonpareil.set(as.vector(samples$File), col=samples$Color, labels=sa
 ```
 
 **Coverage curves from `nonpareil`**
-![Nonpareil output: coverage curves per sample](https://github.com/AllysonDekovich/BSF_Metagenomics/blob/main/DM_T0_T3_T7_pre_host_trim-1.png)
+![Nonpareil output: coverage curves per sample](https://github.com/AllysonDekovich/BSF_Metagenomics/blob/main/figures/nonpareil_coverage_curve_DM_T0_T3_T7_pre_host_trim.png)
 
 * The x-axis plots the log-transformed sequencing effort, which is the number of reads or base pairs sequenced.<br/>
 * The y-axis plots the estimated coverage of the community diversity or complexity on a 0 to 1 scale.
@@ -321,7 +321,7 @@ This error indicates that **none** of the reads aligned to the reference genome.
 I think this is the likely reason, so I will continue on with the initial files for these, but the trimmed ones for the others. I will be able to see later down the line if there are any issues. 
 
 **`Nonpareil` coverage curves for the host trimmed samples:**
-![Nonpareil output: coverage curves per sample on host trimmed samples](https://github.com/AllysonDekovich/BSF_Metagenomics/blob/main/DM_T0_T3_T7_host_trim-1.png)
+![Nonpareil output: coverage curves per sample on host trimmed samples](https://github.com/AllysonDekovich/BSF_Metagenomics/blob/main/figures/nonpareil_coverage_curve_DM_T0_T3_T7_host_trim.png)
 
 **_MEGAHIT_**
 
