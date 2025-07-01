@@ -427,4 +427,114 @@ output=$(basename "$genome" | sed 's/.final.contigs.fa//')
 metaquast $genome -o ${output}_QC
 ```
 
+`QUAST` results for each timepoint co-assembly revealed **poor** metrics. For example, here is the report for the `DM_C_T0` co-assembly:
+
+```
+Combined reference | 147915957 bp | 43 references | 715 fragments
+
+Alignment-based statistics	DM_C_t0_final.contigs
+Genome fraction (%) 	1.323
+Duplication ratio 	4.287
+Largest alignment 	14103
+Total aligned length 	3766360
+NA50	-
+NA90	-
+auNA	0.6
+LA50	-
+LA90	-
+NG50	...
+NG90	...
+NGA50 	...
+NGA90	...
+LG50	...
+LG90	...
+LGA50	...
+LGA90	...
+Misassemblies	
+# misassemblies 	148
+   # relocations	18
+   # translocations	39
+   # inversions	3
+   # interspecies translocations	88
+# misassembled contigs	131
+Misassembled contigs length 	128853
+# possibly misassembled contigs	7788
+   # possible misassemblies	9416
+# local misassemblies	57
+# scaffold gap ext. mis.	0
+# scaffold gap loc. mis.	0
+# unaligned mis. contigs	758
+Unaligned	
+# fully unaligned contigs	3337507
+Fully unaligned length	3909150482
+# partially unaligned contigs	8257
+Partially unaligned length	35665204
+Per base quality	
+# mismatches per 100 kbp 	13837
+# mismatches	521167
+# indels per 100 kbp 	1572.26
+# indels	59217
+   # indels (<= 5 bp)	57871
+   # indels (> 5 bp)	1346
+Indels length	109952
+# N's per 100 kbp 	0
+# N's	0
+Statistics without reference	
+# contigs 	3352242
+# contigs (>= 0 bp)	7666610
+# contigs (>= 1000 bp)	1008502
+# contigs (>= 5000 bp)	70286
+# contigs (>= 10000 bp)	21094
+# contigs (>= 25000 bp)	3258
+# contigs (>= 50000 bp)	511
+Largest contig	235331
+Total length	3950894226
+Total length (>= 0 bp)	5522859343
+Total length (>= 1000 bp)	2373756832
+Total length (>= 5000 bp)	718556960
+Total length (>= 10000 bp)	386149310
+Total length (>= 25000 bp)	128013159
+Total length (>= 50000 bp)	36760112
+N50	1292
+N90	577
+auN	4346.2
+L50	655441
+L90	2615042
+GC (%)	...
+Similarity statistics	
+# similar correct contigs	0
+# similar misassembled blocks	0
+```
+Genome fraction (1.323%) is very small, has over 3.3 million contigs, and 148 misassemblies, just to name a few. To try and improve things, I re-ran `MEGAHIT` on `DM_C_T0` with advanced parameters, such as a minimum contig length and a more diverse set of kmers. 
+
+```
+#!/bin/bash
+#SBATCH --job-name=megahit_T0
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=12
+#SBATCH --mem=260G
+#SBATCH -A ACF-UTK0032
+#SBATCH --partition=long-bigmem
+#SBATCH --qos=long-bigmem
+#SBATCH --time=144:00:00
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=adekovic@vols.utk.edu
+
+
+megahit \
+-1 DM_C_T0_r1_Owings_S13_L001_R1_trimmed_kneaddata_paired_1.fastq,DM_C_T0_r2_Owings_S14_L001_R1_trimmed_kneaddata_paired_1.fastq,DM_C_T0_r3_Owings_S15_L001_R1_trimmed_kneaddata_paired_1.fastq \
+-2 DM_C_T0_r1_Owings_S13_L001_R1_trimmed_kneaddata_paired_2.fastq,DM_C_T0_r2_Owings_S14_L001_R1_trimmed_kneaddata_paired_2.fastq,DM_C_T0_r3_Owings_S15_L001_R1_trimmed_kneaddata_paired_2.fastq \
+-t 12 \
+-m 260000000000 \
+--k-list 21,29,39,49,59,69,79,89,99,109,119,129,139,149,159,169,179,189,199 \
+--min-contig-len 1000 \
+-o DM_C_T0_custom
+```
+
+However, this did not improve the assembly statistics by much. I was reading online and apparently highly diverse samples can complicate these statistics. I also did a co-assembly (combined the reps within each timepoint), which may further complicate the assembler. It was recommended that I just move forward and assemble contigs into MAGs and **then** perform QUAST/BUSCO/CheckM/etc on each individual bin.
+
+**_Maxbin2_**
+I will be using `Maxbin2` to assemble contigs into separate MAGs. This program will utilize the contigs from the `MEGAHIT` assembly and the coverage information to cluster contigs into bins, each representing a putative genome. 
+
+First, I need to calculate the coverage profiles of each individual sample per timepoint. I will use `bowtie2` to map back the raw reads to the new MAG assembly.
 
