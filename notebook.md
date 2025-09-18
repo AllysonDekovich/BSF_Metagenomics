@@ -399,112 +399,6 @@ megahit \
 -o DM_T7
 ```
 
-**_QUAST_**
-
-Before binning and taxonomic identification, I will use `QUAST` to assess the quality of each generated assembly.
-
-```
-#!/bin/bash
-#SBATCH --job-name=quast
-#SBATCH --nodes=1
-#SBATCH --cpus-per-task=12
-#SBATCH -A ACF-UTK0032
-#SBATCH --partition=long
-#SBATCH --qos=long
-#SBATCH --time=144:00:00
-#SBATCH --mail-type=BEGIN,END,FAIL
-#SBATCH --mail-user=adekovic@vols.utk.edu
-#SBATCH --array=1-2
-
-# isolate the metagenome fasta files to set up the array
-genome=$(grep ".final.contigs.fa" filenames.txt | sed -n "${SLURM_ARRAY_TASK_ID}p")
-echo "Evaluated genome: $genome"
-
-# create basename for output directory
-output=$(basename "$genome" | sed 's/.final.contigs.fa//')
-
-# run metaquast to evaluate assembly quality
-metaquast $genome -o ${output}_QC
-```
-
-`QUAST` results for each timepoint co-assembly revealed **poor** metrics. For example, here is the report for the `DM_C_T0` co-assembly:
-
-```
-Combined reference | 147915957 bp | 43 references | 715 fragments
-
-Alignment-based statistics	DM_C_t0_final.contigs
-Genome fraction (%) 	1.323
-Duplication ratio 	4.287
-Largest alignment 	14103
-Total aligned length 	3766360
-NA50	-
-NA90	-
-auNA	0.6
-LA50	-
-LA90	-
-NG50	...
-NG90	...
-NGA50 	...
-NGA90	...
-LG50	...
-LG90	...
-LGA50	...
-LGA90	...
-Misassemblies	
-# misassemblies 	148
-   # relocations	18
-   # translocations	39
-   # inversions	3
-   # interspecies translocations	88
-# misassembled contigs	131
-Misassembled contigs length 	128853
-# possibly misassembled contigs	7788
-   # possible misassemblies	9416
-# local misassemblies	57
-# scaffold gap ext. mis.	0
-# scaffold gap loc. mis.	0
-# unaligned mis. contigs	758
-Unaligned	
-# fully unaligned contigs	3337507
-Fully unaligned length	3909150482
-# partially unaligned contigs	8257
-Partially unaligned length	35665204
-Per base quality	
-# mismatches per 100 kbp 	13837
-# mismatches	521167
-# indels per 100 kbp 	1572.26
-# indels	59217
-   # indels (<= 5 bp)	57871
-   # indels (> 5 bp)	1346
-Indels length	109952
-# N's per 100 kbp 	0
-# N's	0
-Statistics without reference	
-# contigs 	3352242
-# contigs (>= 0 bp)	7666610
-# contigs (>= 1000 bp)	1008502
-# contigs (>= 5000 bp)	70286
-# contigs (>= 10000 bp)	21094
-# contigs (>= 25000 bp)	3258
-# contigs (>= 50000 bp)	511
-Largest contig	235331
-Total length	3950894226
-Total length (>= 0 bp)	5522859343
-Total length (>= 1000 bp)	2373756832
-Total length (>= 5000 bp)	718556960
-Total length (>= 10000 bp)	386149310
-Total length (>= 25000 bp)	128013159
-Total length (>= 50000 bp)	36760112
-N50	1292
-N90	577
-auN	4346.2
-L50	655441
-L90	2615042
-GC (%)	...
-Similarity statistics	
-# similar correct contigs	0
-# similar misassembled blocks	0
-```
 Genome fraction (1.323%) is very small, has over 3.3 million contigs, and 148 misassemblies, just to name a few. To try and improve things, I re-ran `MEGAHIT` on `DM_C_T0` with advanced parameters, such as a minimum contig length and a more diverse set of kmers. 
 
 ```
@@ -536,5 +430,108 @@ However, this did not improve the assembly statistics by much. I was reading onl
 **_Maxbin2_**
 I will be using `Maxbin2` to assemble contigs into separate MAGs. This program will utilize the contigs from the `MEGAHIT` assembly and the coverage information to cluster contigs into bins, each representing a putative genome. 
 
-First, I need to calculate the coverage profiles of each individual sample per timepoint. I will use `bowtie2` to map back the raw reads to the new MAG assembly.
+I need to calculate the coverage profiles of each individual sample per timepoint. I will use `bowtie2` to map back the raw reads to the new MAG assembly.
 
+First, the 'reference' genome (DM_C_t0_final.contigs.fa) for this timepoint was indexed with `bowtie2-build`:
+```
+#!/bin/bash
+#SBATCH --job-name=bowtie2_index
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH -A ACF-UTK0032
+#SBATCH --partition=campus
+#SBATCH --qos=campus
+#SBATCH --time=24:00:00
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=adekovic@vols.utk.edu
+
+bowtie2-build DM_C_t0_final.contigs.fa DM_C_t0_final.contigs
+```
+Next, each `fastq` file was aligned to the reference genome with `bowtie2` and each bam was sorted and indexed with `samtools`:
+
+```
+#!/bin/bash
+#SBATCH --job-name=bowtie2_coverage
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH -A ACF-UTK0032
+#SBATCH --partition=long
+#SBATCH --qos=long
+#SBATCH --time=144:00:00
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=adekovic@vols.utk.edu
+#SBATCH --array=1-3
+
+# Only select lines with _R1_001.fastq.gz and pick the correct one by SLURM_ARRAY_TASK_ID
+infile1=$(sed -n "${SLURM_ARRAY_TASK_ID}p" filenames.txt)
+echo "R1: $infile1"
+
+# create variable name for the second paired end read set
+infile2=$(basename "$infile1" | sed 's/_R1_trimmed_kneaddata_paired_1.fastq/_R1_trimmed_kneaddata_paired_2.fastq/')
+echo "R2: $infile2"
+
+#create outfile basename only
+outfile=$(basename "$infile1" | sed 's/_R1_trimmed_kneaddata_paired_1.fastq//')
+echo "outfile: $outfile"
+
+# run bowtie to calculate coverage and pipe output to bam format using samtools
+bowtie2 \
+-p 8 \
+-x DM_C_t0_final.contigs \
+-1 $infile1 \
+-2 $infile2 | samtools sort -o ${outfile}.sorted.bam
+```
+```
+#!/bin/bash
+#SBATCH --job-name=index_bam_DM_C_T0
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH -A ACF-UTK0032
+#SBATCH --partition=campus
+#SBATCH --qos=campus
+#SBATCH --time=24:00:00
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=adekovic@vols.utk.edu
+
+samtools index -M *.bam
+```
+Coverage for `DM_C_T0` timepoint was calculated with `BamM`:
+
+```
+#!/bin/bash
+#SBATCH --job-name=DM_C_T0_bamm_coverage_list
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH -A ACF-UTK0032
+#SBATCH --partition=long
+#SBATCH --qos=long
+#SBATCH --time=144:00:00
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=adekovic@vols.utk.edu
+
+
+bamm parse -c DM_C_T0_coverage.tsv -m pmean -b DM_C_T0_r1_Owings_S13_L001.sorted.bam DM_C_T0_r2_Owings_S14_L001.sorted.bam DM_C_T0_r3_Owings_S15_L001.sorted.bam
+```
+`bamm parse`: `BamM` command to analyze BAM files for coverage calculation
+`-c`: Combines output coverage from all three replicates into a single `.tsv` file
+`-m pmean`: coverage mode set to `pmean`; calculated using a particular mean method (trimmed or pooled)
+`-b`: indicates the `bam` files that contain the mapped sequences to be analyzed.
+
+Once a coverage list is generated, I will run `maxbin2`:
+
+```
+#!/bin/bash
+#SBATCH --job-name=DM_C_T0_MAG_binning
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH -A ACF-UTK0032
+#SBATCH --partition=long
+#SBATCH --qos=long
+#SBATCH --time=144:00:00
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=adekovic@vols.utk.edu
+
+
+
+run_MaxBin.pl -contig DM_C_t0_final.contigs.fa -abund DM_C_T0_coverage_updated.tsv -min_contig_length 1500 -thread 8 -out DM_C_T0_bins
+```
