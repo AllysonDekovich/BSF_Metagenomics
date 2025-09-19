@@ -533,5 +533,144 @@ Once a coverage list is generated, I will run `maxbin2`:
 
 
 
-run_MaxBin.pl -contig DM_C_t0_final.contigs.fa -abund DM_C_T0_coverage_updated.tsv -min_contig_length 1500 -thread 8 -out DM_C_T0_bins
+run_MaxBin.pl -contig DM_C_t0_final.contigs.fa \
+-abund DM_C_T0_coverage_updated.tsv -min_contig_length 1500 \
+-thread 8 -out DM_C_T0_bins
+```
+
+Along with providing the newly generated coverage file and the index contig assembly, I set the minimum contig length to be 1500 to ensure high quality contigs for binning later on.
+
+**_Metabat2_**
+
+A common recommendation is for users to run several binning programs and then apply refinement tools to retain the highest-quality bins from both for downstream analysis. So, I will also run `metabat2`:
+
+```
+#!/bin/bash
+#SBATCH --job-name=DM_C_T0_metabat2
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH -A ACF-UTK0032
+#SBATCH --partition=long
+#SBATCH --qos=long
+#SBATCH --time=48:00:00
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=adekovic@vols.utk.edu
+
+
+metabat2 \
+-i DM_C_t0_final.contigs.fa \
+-o ./bins \
+-a DM_C_T0_coverage.tsv \
+-t 8
+```
+
+**_DAS Tool_**
+
+I used `DAS` to identify the highest-quality bins from both binning softwares:
+
+```
+#!/bin/bash
+#SBATCH --job-name=DM_C_T0_DAS
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=30
+#SBATCH -A ACF-UTK0032
+#SBATCH --partition=long
+#SBATCH --qos=long
+#SBATCH --time=48:00:00
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=adekovic@vols.utk.edu
+
+
+DAS_Tool \
+-i ./DM_C_T0_maxbin2_contigs2bin.tsv,./DM_C_T0_metabat2_contigs2bin.tsv \
+-l maxbin2,metabat \
+-c ./DM_C_t0_final.contigs.fa \
+-o ./DM_C_T0_refine/DM_C_T0_DAS_refine \
+-t 30
+```
+
+*`-i`: provide the output files from each binning program
+*`-l`: provide the name of the binning softwares, in order that matches the `contigs2bin` files
+
+**_CheckM_**
+
+Once I identify the highest-quality bins for each timepoint, `CheckM` is used to identify contamination and completeness of each bin.
+
+Before running, the `CheckM` database must be downloaded. It can be downloaded from [here](https://data.ace.uq.edu.au/public/CheckM_databases) and the path must be set within the linux environment:
+
+```
+export CHECKM_DATA_PATH=/path/to/my_checkm_data
+```
+
+Run `CheckM` on the bins from each binning software (below is code from DM_C_T0 and metabat2)
+```
+#!/bin/bash
+#SBATCH --job-name=DM_C_T0_checkM
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=30
+#SBATCH -A ACF-UTK0032
+#SBATCH --partition=long
+#SBATCH --qos=long
+#SBATCH --time=48:00:00
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=adekovic@vols.utk.edu
+
+
+
+checkm2 predict --threads 30 --input ../09_metabat2_MAG_binning/DM_C_T0/bins --output-directory ./DM_C_T0_metabat2 -x fa --database_path ./CheckM2_database/uniref100.KO.1.dmnd
+```
+
+After reviewing the reports, I only kept bins with >90% completeness and <10% contamination.
+
+**_GTDBTK_**
+
+Once I finalized bins for every timepoint, I then taxonomically classified them using `gtdbtk`.
+
+First, the database must be downloaded and the correct path needs to be set:
+
+```
+#!/bin/bash
+#SBATCH --job-name=gtdbtk_database
+#SBATCH --nodes=1
+#SBATCH -A ACF-UTK0032
+#SBATCH --partition=long
+#SBATCH --qos=long
+#SBATCH --time=48:00:00
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=adekovic@vols.utk.edu
+
+# change into scratch directory
+cd /lustre/isaac24/scratch/adekovic/gtdbtk_2.5.1_database
+
+# Download the database in this directory
+wget https://data.ace.uq.edu.au/public/gtdb/data/releases/latest/auxillary_files/gtdbtk_package/full_package/gtdbtk_data.tar.gz
+
+# Export path to new data location
+export GTDBTK_DATA_PATH=/lustre/isaac24/scratch/adekovic/gtdbtk_2.5.1_database
+```
+
+Run `gtdbtk`:
+
+```
+#!/bin/bash
+#SBATCH --job-name=gtdbtk
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=200G
+#SBATCH -A ACF-UTK0032
+#SBATCH --partition=long-bigmem
+#SBATCH --qos=long-bigmem
+#SBATCH --time=72:00:00
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=adekovic@vols.utk.edu
+
+export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK}
+
+gtdbtk classify_wf \
+--genome_dir /lustre/isaac24/scratch/adekovic/gtdbtk_analyses_BSF/DM_C_T0 \
+--extension fa \
+--skip_ani_screen \
+--out_dir /lustre/isaac24/scratch/adekovic/gtdbtk_analyses_BSF/DM_C_T0/output \
+--cpus 8
 ```
