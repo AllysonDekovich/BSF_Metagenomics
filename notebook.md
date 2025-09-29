@@ -20,6 +20,11 @@ Due to funding constraints, we sequencing only nine fecal samples representing a
 
 ## Data Analyses
 
+
+![BSF Metagenomics Pipeline](https://github.com/AllysonDekovich/BSF_Metagenomics/blob/main/figures/BSF%20Metagenomics%20Schematic%20.png)
+
+The above schematic summarizes the metagenomics workflow to analyze the data. Detailed descriptions of each software tool, along with code snippets, are provided below.
+
 **_FastQC_**
 
 ```
@@ -165,7 +170,7 @@ nonpareil -s "$infile" -T alignment -f fasta -b "$outfile"
 *`-f`: format of the input file<br/>
 *`-b`: prefix for the output files
 
-**kmer estimation - alignment method was taking too long**
+**Update: kmer estimation - alignment method was taking too long**
 
 ```
 #!/bin/bash
@@ -245,48 +250,32 @@ According to this plot, it seems like all of my samples are good candidates for 
 
 Additionally, all samples seem to be quite diverse and experience similar diversity levels -- the `Nd` values all cluster together and are skewed more toward the right, indicating deeper sequencing is needed to fully capture all of the diversity present in the samples.
 
-So far so good! I am now going to remove host contamination with `kneaddata` (see below). To double check that our sequencing effort wasn't inflated because of host contamination, I will also re-run this analysis on host trimmed reads.
+So far so good! To double check that our sequencing effort wasn't inflated because of host contamination, I will also re-run this analysis on host trimmed reads.
 
-**_KneadData_**
+**bbduk**
 
-Use `bowtie` to index the _Bos taurus_ reference genome prior to removing host contaminants.
+I used `bbduk` (a function in the `bbtools` package) to remove host contamination from the samples. Excess host DNA can distort estimates of microbial species abundance and decrease the proportion of microbial reads recovered, which in turn diminishes the sensitivity of microbial community detection and obscures the identification of rare taxa.
+
+``bduk` uses k-mer matching, where it breaks both the sequencing reads and the reference into small sequences. Any reads that contain enough k-mers (see below) in common with the host reference are discarded. It is fast and memory efficient, as it does not require full all-to-all alignments.
+
+_Bos taurus_ reference genome can be found [here](https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_002263795.3/). **The code shown below is for a single timepoint (DM_C_T0) for clarity; however, I applied the same analysis across all timepoints and samples.**
+
 ```
 #!/bin/bash
-#SBATCH --job-name=bowtie_index
+#SBATCH --job-name=bbduk_DM_C_T0
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=4
+#SBATCH --mem=100G
 #SBATCH -A ACF-UTK0032
 #SBATCH --partition=campus
 #SBATCH --qos=campus
 #SBATCH --time=24:00:00
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --mail-user=adekovic@vols.utk.edu
-
-
-# run bowtie-build to index the Bos genome
-bowtie2-build ./bos_reference_genome/GCF_002263795.3_ARS-UCD2.0_genomic.fna.gz \
-bos_taurus
-```
-
-
-Use `KneadData` to remove host (_Bos taurus_) contamination for more accurate microbial profiling.<br>
-
-```
-#!/bin/bash
-#SBATCH --job-name=kneaddata
-#SBATCH --nodes=1
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=70G
-#SBATCH -A ACF-UTK0032
-#SBATCH --partition=campus
-#SBATCH --qos=campus
-#SBATCH --time=24:00:00
-#SBATCH --mail-type=BEGIN,END,FAIL
-#SBATCH --mail-user=adekovic@vols.utk.edu
-#SBATCH --array=1-9
+#SBATCH --array=1-3
 
 # Only select lines with _R1_001.fastq.gz and pick the correct one by SLURM_ARRAY_TASK_ID
-infile1=$(sed -n "${SLURM_ARRAY_TASK_ID}p" filenames.txt)
+infile1=$(sed -n "${SLURM_ARRAY_TASK_ID}p" DM_C_T0_filenames.txt)
 echo "R1: $infile1"
 
 # Replace _R1_001.fastq.gz with _R2_001.fastq.gz
@@ -297,116 +286,47 @@ echo "R2: $infile2"
 outfile=$(basename "$infile1" | sed 's/_R1_trimmed.fastq.gz//')
 echo "outfile: $outfile"
 
-# run kneaddata
+# run bbduk
 
-kneaddata \
---input1 $infile1 \
---input2 $infile2 \
--db ./bos_reference_genome \
--o ${outfile}_host_trimmed
+java -ea -Xmx80g -Xms80g -cp /nfs/home/adekovic/mambaforge/envs/bbmap/opt/bbmap-39.33-0/current/ jgi.BBDuk \
+in1=$infile1 \
+in2=$infile2 \
+out1=${outfile}_R1_host_trimmed.fastq.gz \
+out2=${outfile}_R2_host_trimmed.fastq.gz \
+ref=GCF_002263795.3_ARS-UCD2.0_genomic.fna.gz \
+k=25 \
+hdist=0 \
+ktrim=r \
+outm1=bos_taurus_R1.fastq.gz \
+outm2=bos_taurus_R2.fastq.gz \
+tpe \
+stats=DM_C_T0_alignment_stats.txt
 ```
+* `k=25`: size of k-mers used to scan for matches between reads and host reference. I set mine to 25 (which I also believe is default).<br>
+* `hdist=0`: Hamming distance allowed for k-mer matching is zero, meaning only exact matches are considered indicative of contamination.<br>
+* `ktrim=r`: Right trim mode; once a contaminant k-mer is found, the read is trimmed from that k-mer to the end (right side) of the read.<br>
+* `tpe`: Trim pairs equally; if one read pair is trimmed, the mate is trimmed to the same length to keep them in sync.
 
-After running this analysis, host reads were successfull trimmed from all samples EXCEPT: DM_T3_r3 and DM_T7_r1. I got these error messages:
-```
-Error message returned from bowtie2 :
-521367425 reads; of these:
-  521367425 (100.00%) were unpaired; of these:
-    520840270 (99.90%) aligned 0 times
-    219704 (0.04%) aligned exactly 1 time
-    307451 (0.06%) aligned >1 times
-0.10% overall alignment rate
-```
-This error indicates that **none** of the reads aligned to the reference genome. There are three possible reasons that this could fail. The first being that I used an out-of-date or incorrect reference genome -- however, I do not believe this is the case, as I used the most up-to-date _Bos taurus_ reference genome and it worked well on all of the other samples. The second reason could be that the R1/R2 pair files were not matched properly. I looked back in the log file, and it looks like the proper R1/R2 files were used as input for both of these runs. The third and final reason could be biological: that these samples had minimal host DNA in general / was mostly bacterial, which would make sense as to why they did not map properly. 
 
-I think this is the likely reason, so I will continue on with the initial files for these, but the trimmed ones for the others. I will be able to see later down the line if there are any issues. 
-
-**`Nonpareil` coverage curves for the host trimmed samples:**
-![Nonpareil output: coverage curves per sample on host trimmed samples](https://github.com/AllysonDekovich/BSF_Metagenomics/blob/main/figures/nonpareil_coverage_curve_DM_T0_T3_T7_host_trim.png)
 
 **_MEGAHIT_**
 
-Since the samples have more than enough coverage, I will go ahead with MAG construction. I will be using `MEGAHIT` and I will assemble a single MAG for each time point. Since we have three biological replicates for each timepoint, I can combine them all in a co-assembly. The benefits of a co-assembly are:
+Since the samples have more than enough coverage, I will go ahead with MAG construction. First, I used `MEGAHIT`, a de novo assembler, to assemble metagenomic regions into contigs for each biological replicate (DM_C_T0, DM_T3, DM_T7). `MEGAHIT` builds multiple de Bruijn graphs using a range of k-mer sizes -- smaller k-mer sizes help fill gaps and cover low-depth regions, while larger k-mers help resolve repeats and improve contiguity. The final output is a single fasta file for each time point (see 'co-assembly' below) that contains **contigs**, or continuous sequences from overlapping reads.
+
+Since we have three technical replicates for each timepoint, I can combine them all in a co-assembly. The benefits of a co-assembly are:
 
 * **Improved Genome Recovery**: recovers a higher fraction of the genome more than a single assembly alone.<br>
 * **Enhanced Continuity**: Produces less fragmented assemblies and longer contigs.<br>
 * **Efficiency**: By pooling replicates into a single MAG assembly, the computational effort decreases and it is simpler to combine now than to wait until after MAG assembly.
 
-`SLURM` scripts to run `MEGAHIT` for `T0`, `T3`, and `T7`:
-```
-#!/bin/bash
-#SBATCH --job-name=megahit_T0
-#SBATCH --nodes=1
-#SBATCH --cpus-per-task=12
-#SBATCH --mem=260G
-#SBATCH -A ACF-UTK0032
-#SBATCH --partition=long-bigmem
-#SBATCH --qos=long-bigmem
-#SBATCH --time=144:00:00
-#SBATCH --mail-type=BEGIN,END,FAIL
-#SBATCH --mail-user=adekovic@vols.utk.edu
-
-
-megahit \
--1 DM_C_T0_r1_Owings_S13_L001_R1_trimmed_kneaddata_paired_1.fastq,DM_C_T0_r2_Ow$
--2 DM_C_T0_r1_Owings_S13_L001_R1_trimmed_kneaddata_paired_2.fastq,DM_C_T0_r2_Ow$
--t 12 \
--m 260000000000 \
--o DM_C_T0
-```
-
-```
-#!/bin/bash
-#SBATCH --job-name=megahit_T3
-#SBATCH --nodes=1
-#SBATCH --cpus-per-task=12
-#SBATCH --mem=260G
-#SBATCH -A ACF-UTK0032
-#SBATCH --partition=long-bigmem
-#SBATCH --qos=long-bigmem
-#SBATCH --time=144:00:00
-#SBATCH --mail-type=BEGIN,END,FAIL
-#SBATCH --mail-user=adekovic@vols.utk.edu
-
-
-
-megahit \
--1 DM_T3_r1_Owings_S16_L001_R1_trimmed_kneaddata_paired_1.fastq,DM_T3_r3_Owings_S17_L001_R1_trimmed_kneaddata.trimmed.1.fastq,DM_T3_r4_Owings_S18_L001_R1_trimmed_kneaddata_paired_1.fastq \
--2 DM_T3_r1_Owings_S16_L001_R1_trimmed_kneaddata_paired_2.fastq,DM_T3_r3_Owings_S17_L001_R1_trimmed_kneaddata.trimmed.2.fastq,DM_T3_r4_Owings_S18_L001_R1_trimmed_kneaddata_paired_2.fastq \
--t 12 \
--m 260000000000 \
--o DM_T3
-```
-
-```
-#!/bin/bash
-#SBATCH --job-name=megahit_T7
-#SBATCH --nodes=1
-#SBATCH --cpus-per-task=12
-#SBATCH --mem=260G
-#SBATCH -A ACF-UTK0032
-#SBATCH --partition=long-bigmem
-#SBATCH --qos=long-bigmem
-#SBATCH --time=144:00:00
-#SBATCH --mail-type=BEGIN,END,FAIL
-#SBATCH --mail-user=adekovic@vols.utk.edu
-
-
-megahit \
--1 DM_T7_r1_Owings_S19_L001_R1_trimmed_kneaddata.trimmed.1.fastq,DM_T7_r2_Owings_S20_L001_R1_trimmed_kneaddata_paired_1.fastq,DM_T7_r4_Owings_S21_L001_R1_trimmed_kneaddata_paired_1.fastq \
--2 DM_T7_r1_Owings_S19_L001_R1_trimmed_kneaddata.trimmed.2.fastq,DM_T7_r2_Owings_S20_L001_R1_trimmed_kneaddata_paired_2.fastq,DM_T7_r4_Owings_S21_L001_R1_trimmed_kneaddata_paired_2.fastq \
--t 12 \
--m 260000000000 \
--o DM_T7
-```
-
-Genome fraction (1.323%) is very small, has over 3.3 million contigs, and 148 misassemblies, just to name a few. To try and improve things, I re-ran `MEGAHIT` on `DM_C_T0` with advanced parameters, such as a minimum contig length and a more diverse set of kmers. 
+**The code shown below is for a single timepoint (DM_C_T0) for clarity; however, I applied the same analysis across all timepoints and samples.**
 
 ```
 #!/bin/bash
 #SBATCH --job-name=megahit_T0
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=12
-#SBATCH --mem=260G
+#SBATCH --mem=150G
 #SBATCH -A ACF-UTK0032
 #SBATCH --partition=long-bigmem
 #SBATCH --qos=long-bigmem
@@ -416,114 +336,94 @@ Genome fraction (1.323%) is very small, has over 3.3 million contigs, and 148 mi
 
 
 megahit \
--1 DM_C_T0_r1_Owings_S13_L001_R1_trimmed_kneaddata_paired_1.fastq,DM_C_T0_r2_Owings_S14_L001_R1_trimmed_kneaddata_paired_1.fastq,DM_C_T0_r3_Owings_S15_L001_R1_trimmed_kneaddata_paired_1.fastq \
--2 DM_C_T0_r1_Owings_S13_L001_R1_trimmed_kneaddata_paired_2.fastq,DM_C_T0_r2_Owings_S14_L001_R1_trimmed_kneaddata_paired_2.fastq,DM_C_T0_r3_Owings_S15_L001_R1_trimmed_kneaddata_paired_2.fastq \
+-1 DM_C_T0_r1_Owings_S13_L001_R1_host_trimmed.fastq.gz,DM_C_T0_r2_Owings_S14_L001_R1_host_trimmed.fastq.gz,DM_C_T0_r3_Owings_S15_L001_R1_host_trimmed.fastq.gz \
+-2 DM_C_T0_r1_Owings_S13_L001_R2_host_trimmed.fastq.gz,DM_C_T0_r2_Owings_S14_L001_R2_host_trimmed.fastq.gz,DM_C_T0_r3_Owings_S15_L001_R2_host_trimmed.fastq.gz \
 -t 12 \
 -m 260000000000 \
 --k-list 21,29,39,49,59,69,79,89,99,109,119,129,139,149,159,169,179,189,199 \
 --min-contig-len 1000 \
--o DM_C_T0_custom
+-o DM_C_T0
 ```
+* `--k-list`: The multiple kmer sizes `MEGAHIT` uses iteratively to build the assembly graph.
+* `--min-contig-length`: sets a minimum threshold for contig length, to avoid keeping short, unreliable contigs in the assembly.
 
-However, this did not improve the assembly statistics by much. I was reading online and apparently highly diverse samples can complicate these statistics. I also did a co-assembly (combined the reps within each timepoint), which may further complicate the assembler. It was recommended that I just move forward and assemble contigs into MAGs and **then** perform QUAST/BUSCO/CheckM/etc on each individual bin.
+**_Fairy_**
 
-**_Maxbin2_**
-I will be using `Maxbin2` to assemble contigs into separate MAGs. This program will utilize the contigs from the `MEGAHIT` assembly and the coverage information to cluster contigs into bins, each representing a putative genome. 
+Prior to binning reads, I generate coverage lists with `fairy`. Coverage lists will be generated for each timepoint; each list will contain contigs (identified by `megahit`), contig length, average depth across all samples, and depth in each sample. Contigs from the same microbial genome tend to have similar coverage patterns across multiple samples or sequencing runs. Coverage lists enable more accurate binning downstream, especially distinguishing closely related species and resolving complex communities. 
 
-I need to calculate the coverage profiles of each individual sample per timepoint. I will use `bowtie2` to map back the raw reads to the new MAG assembly.
+`fairy` does not require alignments to estimate coverage, but also uses k-mer libraries for speed. It builds hash tables of subsampled k-mers from reads from each sample. It then queries these subsampled k-mers against the contig sequences to estimate how frequently contigs appear in each sample and approximates coverage.
 
-First, the 'reference' genome (DM_C_t0_final.contigs.fa) for this timepoint was indexed with `bowtie2-build`:
-```
-#!/bin/bash
-#SBATCH --job-name=bowtie2_index
-#SBATCH --nodes=1
-#SBATCH --cpus-per-task=8
-#SBATCH -A ACF-UTK0032
-#SBATCH --partition=campus
-#SBATCH --qos=campus
-#SBATCH --time=24:00:00
-#SBATCH --mail-type=BEGIN,END,FAIL
-#SBATCH --mail-user=adekovic@vols.utk.edu
+**The code shown below is for a single timepoint (DM_C_T0) for clarity; however, I applied the same analysis across all timepoints and samples.**
 
-bowtie2-build DM_C_t0_final.contigs.fa DM_C_t0_final.contigs
-```
-Next, each `fastq` file was aligned to the reference genome with `bowtie2` and each bam was sorted and indexed with `samtools`:
-
+First, each sample needs to be indexed: 
 ```
 #!/bin/bash
-#SBATCH --job-name=bowtie2_coverage
+#SBATCH --job-name=fairy_index_DM_C_T0
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
 #SBATCH -A ACF-UTK0032
 #SBATCH --partition=long
 #SBATCH --qos=long
-#SBATCH --time=144:00:00
+#SBATCH --time=48:00:00
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --mail-user=adekovic@vols.utk.edu
 #SBATCH --array=1-3
 
 # Only select lines with _R1_001.fastq.gz and pick the correct one by SLURM_ARRAY_TASK_ID
-infile1=$(sed -n "${SLURM_ARRAY_TASK_ID}p" filenames.txt)
+infile1=$(sed -n "${SLURM_ARRAY_TASK_ID}p" DM_C_T0_filenames.txt)
 echo "R1: $infile1"
 
 # create variable name for the second paired end read set
-infile2=$(basename "$infile1" | sed 's/_R1_trimmed_kneaddata_paired_1.fastq/_R1_trimmed_kneaddata_paired_2.fastq/')
+infile2=$(basename "$infile1" | sed 's/_R1_host_trimmed.fastq.gz/_R2_host_trimmed.fastq.gz/')
 echo "R2: $infile2"
 
 #create outfile basename only
-outfile=$(basename "$infile1" | sed 's/_R1_trimmed_kneaddata_paired_1.fastq//')
+outfile=$(basename "$infile1" | sed 's/_R1_host_trimmed.fastq.gz//')
 echo "outfile: $outfile"
 
-# run bowtie to calculate coverage and pipe output to bam format using samtools
-bowtie2 \
--p 8 \
--x DM_C_t0_final.contigs \
--1 $infile1 \
--2 $infile2 | samtools sort -o ${outfile}.sorted.bam
+# run fairy to index short reads
+fairy sketch -1 $infile1 -2 $infile2 -d DM_C_T0_indexed_files
 ```
-```
-#!/bin/bash
-#SBATCH --job-name=index_bam_DM_C_T0
-#SBATCH --nodes=1
-#SBATCH --cpus-per-task=8
-#SBATCH -A ACF-UTK0032
-#SBATCH --partition=campus
-#SBATCH --qos=campus
-#SBATCH --time=24:00:00
-#SBATCH --mail-type=BEGIN,END,FAIL
-#SBATCH --mail-user=adekovic@vols.utk.edu
 
-samtools index -M *.bam
-```
-Coverage for `DM_C_T0` timepoint was calculated with `BamM`:
+Then coverage can be estimated. I used two binning softwares (`maxbin2` and `metabat2`), which require different coverage list formats. `fairy` has functionality to make this happen:
 
 ```
 #!/bin/bash
-#SBATCH --job-name=DM_C_T0_bamm_coverage_list
+#SBATCH --job-name=fairy_coverage_DM_C_T0
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
+#SBATCH --mem=30G
 #SBATCH -A ACF-UTK0032
 #SBATCH --partition=long
 #SBATCH --qos=long
-#SBATCH --time=144:00:00
+#SBATCH --time=48:00:00
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --mail-user=adekovic@vols.utk.edu
 
 
-bamm parse -c DM_C_T0_coverage.tsv -m pmean -b DM_C_T0_r1_Owings_S13_L001.sorted.bam DM_C_T0_r2_Owings_S14_L001.sorted.bam DM_C_T0_r3_Owings_S15_L001.sorted.bam
+# run fairy to calculate coverage on indexed files
+fairy coverage DM_C_T0_final.contigs.fa ./DM_C_T0_indexed_files/*.bcsp -t 8 --maxbin-format -o DM_C_T0_coverage_maxbin2.tsv
+fairy coverage DM_C_T0_final.contigs.fa ./DM_C_T0_indexed_files/*.bcsp -t 8 -o DM_T0_coverage_metabat2.tsv
 ```
-`bamm parse`: `BamM` command to analyze BAM files for coverage calculation
-`-c`: Combines output coverage from all three replicates into a single `.tsv` file
-`-m pmean`: coverage mode set to `pmean`; calculated using a particular mean method (trimmed or pooled)
-`-b`: indicates the `bam` files that contain the mapped sequences to be analyzed.
+I would run one at a time, however, you may be able to run both lines together in one submission. I don't know if this will generate any errors though, so proceed with caution.
 
-Once a coverage list is generated, I will run `maxbin2`:
+
+**_Maxbin2_**
+After coverage lists were generated, I then started to bin the metagenomic reads into metagenome assembled genomes (MAGs) with two softwares: `maxbin2` and `metabat2`. Using multiple binning softwares is beneficial because different tools use distinct algorithms and have different assumptions, which can result in biases. In other words, one binning software may miss certain bins that another catches. Combining multiple softwares can result in:
+
+* Increased recovery of high-quality MAGs by capturing diverse genome signatures missed by any single method.<br>
+* Improve accuracy in assigning contigs into bins by leveraging different approaches.
+* Enhance strain-level resolution and recovery of rare or low-abundance species by cross-validating bins across methods.
+
+`maxbin2` uses an Expectation-Maximization (EM) algorithm that integrates multiple features to assign contigs into MAGs. It identifies conserved, single-copy marker genes within contigs that are frequently present and unique to specific prokaryotic genomes. By combining contig coverage across multiple metagenomic samples (generated with `fairy`) and nucleotide sequence composition, the EM algorithm iterativelty estimates the probability that each contig belongs to a given genomic bin and adjusts membership to maximize the overall likelihood. The output bins are **draft** MAGs, or sets of contigs clustered into bins with predicted completeness and contamination scores.
+
+**The code shown below is for a single timepoint (DM_C_T0) for clarity; however, I applied the same analysis across all timepoints and samples.**
 
 ```
 #!/bin/bash
 #SBATCH --job-name=DM_C_T0_MAG_binning
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=16
 #SBATCH -A ACF-UTK0032
 #SBATCH --partition=long
 #SBATCH --qos=long
@@ -532,23 +432,22 @@ Once a coverage list is generated, I will run `maxbin2`:
 #SBATCH --mail-user=adekovic@vols.utk.edu
 
 
-
-run_MaxBin.pl -contig DM_C_t0_final.contigs.fa \
--abund DM_C_T0_coverage_updated.tsv -min_contig_length 1500 \
--thread 8 -out DM_C_T0_bins
+run_MaxBin.pl -contig DM_C_T0_final.contigs.fa -abund DM_C_T0_coverage_maxbin2.tsv -min_contig_length 1500 -thread 16 -out DM_C_T0_bins
 ```
+* `-min-contig-length`: each bin needs to have contigs greater than 1500 base pairs.
 
-Along with providing the newly generated coverage file and the index contig assembly, I set the minimum contig length to be 1500 to ensure high quality contigs for binning later on.
 
 **_Metabat2_**
 
-A common recommendation is for users to run several binning programs and then apply refinement tools to retain the highest-quality bins from both for downstream analysis. So, I will also run `metabat2`:
+Similar to `maxbin2`, `metabat2` utilizes nucleotide sequence composition (tetranucleotide frequencies) and `fairy`-generated coverage lists to determine MAG binning. However, instead of EM likelihood, `metabat2` will use those factors to calculate normalized, composite scores to build a graph structure (scores are edge weights, contigs are nodes). Similar contigs will then be connected, and the software will partition similar contigs into bins. Less manual tuning is needed because `metabat2` is an adaptive algorithm.
+
+**The code shown below is for a single timepoint (DM_C_T0) for clarity; however, I applied the same analysis across all timepoints and samples.**
 
 ```
 #!/bin/bash
 #SBATCH --job-name=DM_C_T0_metabat2
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=16
 #SBATCH -A ACF-UTK0032
 #SBATCH --partition=long
 #SBATCH --qos=long
@@ -558,15 +457,37 @@ A common recommendation is for users to run several binning programs and then ap
 
 
 metabat2 \
--i DM_C_t0_final.contigs.fa \
--o ./bins \
--a DM_C_T0_coverage.tsv \
--t 8
+-i DM_C_T0_final.contigs.fa \
+-o ./DM_C_T0bins \
+-a DM_T0_coverage_metabat2.tsv \
+-t 16
 ```
 
 **_DAS Tool_**
 
-I used `DAS` to identify the highest-quality bins from both binning softwares:
+After I obtained metagenomic bins from `maxbin2` and `metabat2`, I used `DAS Tool` (Dereplication, Aggregation, and Scoring Tool) to refine the bin results in order to generate a non-redundant, high-quality set of MAGs to use from downstream analyses. Some advantages of using bin refinement tools (also discussed above):
+
+* Different binning tools have unique strengths and biases, producing varying bin sets with overlaps and conflicts.
+* Single binning tools may miss some genomes or produce bins with contamination and completeness.
+* Refinement tools can leverage complimentary bins from all tools, improving the number, quality, and accuracy of recovered MAGs.
+
+`DAS Tool` works by first identifying redundant bins across multiple binners using single-copy marker genes. It then combines candidate bins from all input tools into a comprehensive set and scores each bin based on completeness and contamination metrics from single-copy gene presence:
+* Completeness is the proportion of expected single-copy genes found in the bin.
+* Contamination is indicated by multiple copies of single-copy genes, suggesting mixed genomes/poor assembly.
+* The score also penalizes "megabins", which are overly large or contain many single copy genes, to avoid chimeric bins.
+
+
+**The code shown below is for a single timepoint (DM_C_T0) for clarity; however, I applied the same analysis across all timepoints and samples.**
+
+`DAS Tool` requires a specific file `contig2bin`, which is a `.tsv` file that contains the contig name is one column and its associated bin in another. `DAS Tool` has a script to do this for you, so just run:
+
+```
+Fasta_to_Contigs2Bin.sh -i /lustre/isaac24/proj/UTK0032/adekovic/BSF_metagenomics/08_maxbin2_MAG_binning -e fa > DM_C_T0_maxbin2_contig2bin.tsv
+```
+* `-i`: the path to the bins
+* `-e`: the extension of the resulting fasta files (either fa or fasta)
+
+Do this with bins from both programs.
 
 ```
 #!/bin/bash
@@ -582,27 +503,28 @@ I used `DAS` to identify the highest-quality bins from both binning softwares:
 
 
 DAS_Tool \
--i ./DM_C_T0_maxbin2_contigs2bin.tsv,./DM_C_T0_metabat2_contigs2bin.tsv \
+-i ./DM_C_T0_maxbin2_contig2bin.tsv,./DM_C_T0_metabat2_contig2bin.tsv \
 -l maxbin2,metabat \
--c ./DM_C_t0_final.contigs.fa \
--o ./DM_C_T0_refine/DM_C_T0_DAS_refine \
+-c ./DM_C_T0_final.contigs.fa \
+-o ./DM_C_T0_refined_bins \
 -t 30
 ```
 
-*`-i`: provide the output files from each binning program
-*`-l`: provide the name of the binning softwares, in order that matches the `contigs2bin` files
+* `-i`: provide the output files from each binning program
+* `-l`: provide the name of the binning softwares, in order that matches the `contig2bin` files
 
 **_CheckM_**
 
-Once I identify the highest-quality bins for each timepoint, `CheckM` is used to identify contamination and completeness of each bin.
+After bins are refined and selected with `DAS Tool`, I used `CheckM` to assess the quality of these MAGs for further filtering. `CheckM` identifies lineage-specific, single-copy marker genes that are expected to be present once per genome within a given phylogenetic group using a reference genome tree, [downloaded here](https://data.ace.uq.edu.au/public/CheckM_databases). It then assesses the fraction of these markers genes found in each MAG to estimate completeness (how much of the genome is recovered). Contamination is assessed based on the presence of multiple copies of single-copy marker genes, which can indicate mixed genomes or chimeric sequences. Contamination can also be reliably distinguished from closely related strains using amino acid identity of multicopy genes.
 
-Before running, the `CheckM` database must be downloaded. It can be downloaded from [here](https://data.ace.uq.edu.au/public/CheckM_databases) and the path must be set within the linux environment:
+**The code shown below is for a single timepoint (DM_C_T0) for clarity; however, I applied the same analysis across all timepoints and samples.**
+
+Before running, the database of marker genes must be downloaded. Set the appropriate path within your linux environment:
 
 ```
-export CHECKM_DATA_PATH=/path/to/my_checkm_data
+export CHECKM_DATA_PATH=/lustre/isaac24/proj/UTK0032/adekovic/BSF_metagenomics/11_checkM_contamination/CheckM2_database
 ```
 
-Run `CheckM` on the bins from each binning software (below is code from DM_C_T0 and metabat2)
 ```
 #!/bin/bash
 #SBATCH --job-name=DM_C_T0_checkM
@@ -620,7 +542,7 @@ Run `CheckM` on the bins from each binning software (below is code from DM_C_T0 
 checkm2 predict --threads 30 --input ../09_metabat2_MAG_binning/DM_C_T0/bins --output-directory ./DM_C_T0_metabat2 -x fa --database_path ./CheckM2_database/uniref100.KO.1.dmnd
 ```
 
-After reviewing the reports, I only kept bins with >90% completeness and <10% contamination.
+After reviewing the reports, I only kept bins with **>90% completeness and <10% contamination**.
 
 **_GTDBTK_**
 
