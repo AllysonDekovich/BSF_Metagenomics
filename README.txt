@@ -1,2 +1,1 @@
-This repository contains all files and scripts used in the following 
-paper: insert citation here.
+This repository contains all scripts associated with the following publication: *insert citation here*. Raw metagenomic reads for all samples can be found *here*.
