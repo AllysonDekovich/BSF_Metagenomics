@@ -568,7 +568,7 @@ cd /lustre/isaac24/scratch/adekovic/gtdbtk_2.5.1_database
 wget https://data.ace.uq.edu.au/public/gtdb/data/releases/latest/auxillary_files/gtdbtk_package/full_package/gtdbtk_data.tar.gz
 
 # Export path to new data location
-export GTDBTK_DATA_PATH=/lustre/isaac24/scratch/adekovic/gtdbtk_2.5.1_database
+conda env config vars set GTDBTK_DATA_PATH="/lustre/isaac24/scratch/adekovic/gtdbtk_2.5.2_database/release226/"
 ```
 
 Run `gtdbtk`:
