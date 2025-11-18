@@ -90,7 +90,7 @@ Now we can initiate the transfer. Here is the skeletal code to initiate a transf
 ```
 globus transfer initial_endpoint:/path/to/files my_endpoint:/desired/path/to/files --recursive --label "Custom Label"
 ```
-Let's give an actionable example. Let's say that Makhali's files are in a directory called `fastq` in the `Owings UTK Illumina Data 20251107' directory. I want to transfer the files to my personal scratch directory (`/lustre/isaac24/scratch/adekovic`) (with my local endpoint; see above nickname for ease).
+Let's give an actionable example. Makhali's files are in a directory called `fastq` in the `Owings UTK Illumina Data 20251107` directory. Let's say I want to transfer these files to my personal scratch directory (`/lustre/isaac24/scratch/adekovic`) using my local endpoint (nickname `allyson` or 76aeec42-9348-11f0-8647-0e840c2393b5).
 
 Here would be an example command:
 ```
