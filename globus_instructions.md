@@ -51,6 +51,12 @@ If never run before, you will see something like this:
 * The second entry is the sharing flag. `0` disables sharing and `1` enables sharing.<br>
 * The third entry is the R/W flag, which enables write-access. `0` allows read-only access and `1` allows write-access.<br>
 
+Let's say I want to enable my scratch directory to accept shared files. I would update my config file like so:
+```
+~/,0,1
+/lustre/isaac24/scratch/adekovic,1,1
+```
+
 **Be sure to add every directory you want to transfer files to**. You can repeat this step as many times as needed, especially if your target directory changes between projects. Once a directory is added, it will remain saved. Make sure all required directories are added before starting the transfer to avoid errors.
 
 # 4. Initiating the transfer
