@@ -18,7 +18,7 @@ After completing sample collection, we extracted DNA from **all** fecal and larv
 
 Due to funding constraints, we sequencing only nine fecal samples representing all three timepoints. Before submission to sequencing, we pooled 5uL from the three highest-quality samples per replicate - based on Nanodrop and Qubit assessments - into a single 1.5mL tube, yielding a total volume of 15uL of total sample. Library preparation and sequencing were conducted at the University of Tennessee Genomics Core usng half a lane on an Illumina NovaSeq S4 flow cell.
 
-## Data Analyses
+## Data Analyses - Pre-Metagenomic Processing
 
 
 ![BSF Metagenomics Pipeline](https://github.com/AllysonDekovich/BSF_Metagenomics/blob/main/figures/BSF%20Metagenomics%20Schematic%20.png)
@@ -595,4 +595,309 @@ gtdbtk classify_wf \
 --skip_ani_screen \
 --out_dir /lustre/isaac24/scratch/adekovic/gtdbtk_analyses_BSF/DM_C_T0/output \
 --cpus 8
+```
+
+## Data Analyses - Post-Metagenomic Processing
+
+Now that the MAGs are complete, I will start post-metagenomic processing analyses to understand patterns/compositions of MAGs across timepoints. The first thing I want to do is identify the taxa and corresponding relative abundances within each timepoint. 
+
+To calculate relative abundance, use `coverM`:
+
+```
+#!/bin/bash
+#SBATCH --job-name=coverm_T0
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=100G
+#SBATCH -A ACF-UTK0032
+#SBATCH --partition=campus
+#SBATCH --qos=campus
+#SBATCH --time=24:00:00
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=adekovic@vols.utk.edu
+
+
+# run coverm on all samples, will average them out downstream
+coverm contig \
+--coupled DM_C_T0_r1_Owings_S13_L001_R1_host_trimmed.fastq.gz DM_C_T0_r1_Owings_S13_L001_R2_host_trimmed.fastq.gz \
+DM_C_T0_r2_Owings_S14_L001_R1_host_trimmed.fastq.gz DM_C_T0_r2_Owings_S14_L001_R2_host_trimmed.fastq.gz \
+DM_C_T0_r3_Owings_S15_L001_R1_host_trimmed.fastq.gz DM_C_T0_r3_Owings_S15_L001_R2_host_trimmed.fastq.gz \
+--reference DM_C_T0_final.contigs.fa \
+--methods tpm \
+--min-read-percent-identity 95 \
+--min-read-aligned-percent 75 \
+--output-file DM_C_T0_tpm.tsv
+```
+In this command, you provide all three replicate samples (and their corresponding pair using the flag `--coupled`) and the reference contig assembly. `coverM` will compute how well (and how abundantly) the reference is represented by the reads. 
+
+* `coverm contig`: calculates coverage metrics per contig. I used this flag over `genome` because I can easily match contigs to known bins.
+*  `--methods tpm`: specifies to calculate coverage in transcripts per million (TPM), which is pretty standard in metagenomics. In metagenomics, raw read counts per gene or contig can be misleading because longer genes/contigs can attract more reads and sequencing depth also varies across samples. TPM normalizes these factors and allows for the fair comparison of relative abundances of features across samples.
+*  `--min-read-percent-identity 95`: only consider reads that align to a contig with at least 95% sequence similarity.
+*  `--min-read-aligned-percent 75`: only consider reads that have at least 75% of their length aligned to a contig.
+
+After running this, I get an output file like this:
+```
+Contig	DM_C_T0_final.contigs.fa/DM_C_T0_r1_Owings_S13_L001_R1_host_trimmed.fastq.gz TPM	DM_C_T0_final.contigs.fa/DM_C_T0_r2_Owings_S14_L001_R1_host_trimmed.fastq.gz TPM	DM_C_T0_final.contigs.fa/DM_C_T0_r3_Owings_S15_L001_R1_host_trimmed.fastq.gz TPM
+k199_1452990	0.69338745	0.7547322	0.41446882
+k199_3196575	0.13336943	0.4869396	0.07558728
+k199_2905978	0.3799312	0.119415514	2.2749703
+k199_2034186	1.2358623	1.3714141	3.3585987
+k199_1743588	0.21210423	0.15333226	0.21637838
+k199_871795	0.3478786	0.13448378	0.26094764
+k199_1162393	0.30469257	0.12014453	0.41444352
+k199_2615383	0.35917896	0.074541695	0.48212746
+k199_1162394	0.10390625	0.21623935	0.48583332
+```
+Which shows each contig and the corresponding TPM coverage calculation for each sample.
+
+I then can go to `R` and visualize these taxonomic relationships across timepoints with a heatmap.
+```
+library(tidyverse)
+library(readr)
+library(dplyr)
+library(circlize)
+library(ComplexHeatmap)
+
+
+setwd('/Users/adekovic/OneDrive - University of Tennessee/Shoemaker Lab/Dekovich Research/BSF Metagenomics/analyses/post_metagenomic_processing/01_taxonomy_barplots/')
+
+# read in summary files from GTDB-tk for each timepoint
+T0_bac <- read_tsv('./gtdbtk.bac120_DM_C_T0.summary.tsv') %>% 
+  separate(classification, into = c("domain", "phylum", "class", "order", "family", "genus", "species"), sep=";") %>% 
+  mutate(across(everything(), ~str_replace(.x, ".*__", "")))
+T0_arc <- read_tsv('./gtdbtk.ar53_DM_C_T0.summary.tsv') %>% 
+  separate(classification, into = c("domain", "phylum", "class", "order", "family", "genus", "species"), sep=";") %>% 
+  mutate(across(everything(), ~str_replace(.x, ".*__", "")))
+
+T3_bac <- read_tsv('./gtdbtk.bac120_DM_T3.summary.tsv') %>% 
+  separate(classification, into = c("domain", "phylum", "class", "order", "family", "genus", "species"), sep=";") %>% 
+  mutate(across(everything(), ~str_replace(.x, ".*__", "")))
+
+T7_bac <- read_tsv('./DM_T7_bac120.summary.tsv') %>% 
+  separate(classification, into = c("domain", "phylum", "class", "order", "family", "genus", "species"), sep=";") %>% 
+  mutate(across(everything(), ~str_replace(.x, ".*__", "")))
+
+# Put the names of the final MAGs after DAS/CheckM into lists for each timepoint
+DM_C_T0_final <-  c(
+  "DM_C_T0bins.112","DM_C_T0bins.21","DM_C_T0bins.347",
+  "DM_C_T0bins.423","DM_C_T0bins.9","DM_C_T0bins.134",
+  "DM_C_T0bins.271","DM_C_T0bins.353","DM_C_T0bins.452",
+  "DM_C_T0bins.160","DM_C_T0bins.281","DM_C_T0bins.374",
+  "DM_C_T0bins.456","DM_C_T0bins.188","DM_C_T0bins.332",
+  "DM_C_T0bins.396","DM_C_T0bins.465","DM_C_T0bins.202",
+  "DM_C_T0bins.335","DM_C_T0bins.417","DM_C_T0bins.74"
+)
+
+DM_T3_final <- c(
+  "DM_T3_bins.082",
+  "DM_T3_metabat_bins.208",
+  "DM_T3_metabat_bins.367",
+  "DM_T3_metabat_bins.483",
+  "DM_T3_metabat_bins.174",
+  "DM_T3_metabat_bins.270",
+  "DM_T3_metabat_bins.435"
+)
+
+DM_T7_final <- c(
+  "DM_T7_bins.003", "DM_T7_bins.034", "DM_T7_bins.073", "DM_T7_bins.111",
+  "DM_T7_bins.113", "DM_T7_bins.120", "DM_T7_bins.12", "DM_T7_bins.135",
+  "DM_T7_bins.139", "DM_T7_bins.145", "DM_T7_bins.152", "DM_T7_bins.165",
+  "DM_T7_bins.171", "DM_T7_bins.175", "DM_T7_bins.204", "DM_T7_bins.206",
+  "DM_T7_bins.208", "DM_T7_bins.218", "DM_T7_bins.230", "DM_T7_bins.23",
+  "DM_T7_bins.247", "DM_T7_bins.24", "DM_T7_bins.250", "DM_T7_bins.143",
+  "DM_T7_bins.153", "DM_T7_bins.178", "DM_T7_bins.288", "DM_T7_bins.293",
+  "DM_T7_bins.300", "DM_T7_bins.304", "DM_T7_bins.306", "DM_T7_bins.307",
+  "DM_T7_bins.308", "DM_T7_bins.309", "DM_T7_bins.310", "DM_T7_bins.315",
+  "DM_T7_bins.320", "DM_T7_bins.324", "DM_T7_bins.328", "DM_T7_bins.333",
+  "DM_T7_bins.337", "DM_T7_bins.348", "DM_T7_bins.356", "DM_T7_bins.371",
+  "DM_T7_bins.380", "DM_T7_bins.384", "DM_T7_bins.386", "DM_T7_bins.390",
+  "DM_T7_bins.395", "DM_T7_bins.424", "DM_T7_bins.440", "DM_T7_bins.450",
+  "DM_T7_bins.451", "DM_T7_bins.469", "DM_T7_bins.477", "DM_T7_bins.499",
+  "DM_T7_bins.501", "DM_T7_bins.503", "DM_T7_bins.520", "DM_T7_bins.549",
+  "DM_T7_bins.55", "DM_T7_bins.57", "DM_T7_bins.580", "DM_T7_bins.615",
+  "DM_T7_bins.626", "DM_T7_bins.629", "DM_T7_bins.630", "DM_T7_bins.638",
+  "DM_T7_bins.669", "DM_T7_bins.677", "DM_T7_bins.679", "DM_T7_bins.684",
+  "DM_T7_bins.700", "DM_T7_bins.726", "DM_T7_bins.729", "DM_T7_bins.734",
+  "DM_T7_bins.743", "DM_T7_bins.759", "DM_T7_bins.767", "DM_T7_bins.769",
+  "DM_T7_bins.774", "DM_T7_bins.782", "DM_T7_bins.806", "DM_T7_bins.824",
+  "DM_T7_bins.827", "DM_T7_bins.835", "DM_T7_bins.856", "DM_T7_bins.859",
+  "DM_T7_bins.860", "DM_T7_bins.873", "DM_T7_bins.92", "DM_T7_bins.79",
+  "DM_T7_bins.46", "DM_T7_bins.49", "DM_T7_bins.30", "DM_T7_bins.31",
+  "DM_T7_bins.66", "DM_T7_bins.67"
+)
+
+# read in contig2bin files for each timepoint. These match the contigs to the MAGs identified by GTDB-tk
+c2b_DM_C_T0 <- read_tsv("./rel_abundance_tpm/DM_C_T0/DM_C_T0_metabat2_contig2bin.tsv", col_names = c("Contig", "bin"))
+
+c2b_DM_T3 <- read_tsv("./rel_abundance_tpm/DM_T3/DM_T3_metabat_contig2bin.tsv", col_names = c("Contig", "bin"))
+
+c2b_DM_T7 <- read_tsv("./rel_abundance_tpm/DM_T7/DM_T7_metabat2_contig2bin.tsv", col_names = c("Contig", "bin"))
+
+# Filter these contig2bin lists to only include the final MAGs from the above lists
+c2b_filtered_DM_C_T0 <- c2b_DM_C_T0 %>%
+  filter(bin %in% DM_C_T0_final)
+
+c2b_filtered_DM_T3 <- c2b_DM_T3 %>%
+  filter(bin %in% DM_T3_final)
+
+c2b_filtered_DM_T7 <- c2b_DM_T7 %>%
+  filter(bin %in% DM_T7_final)
+
+# read in abundance (tpm) files from coverM and merge with the the filtered contig2bin files
+# read in abundance file
+DM_C_T0_tpm <- read_tsv("./rel_abundance_tpm/DM_C_T0/DM_C_T0_tpm.tsv")
+
+DM_T3_tpm <- read_tsv("./rel_abundance_tpm/DM_T3/DM_T3_tpm.tsv")
+
+DM_T7_tpm <- read_tsv("./rel_abundance_tpm/DM_T7/DM_T7_tpm.tsv")
+
+bin_abundance_DM_C_T0 <- inner_join(DM_C_T0_tpm, c2b_filtered_DM_C_T0, by = "Contig")
+bin_abundance_DM_T3 <- inner_join(DM_T3_tpm, c2b_filtered_DM_T3, by = "Contig")
+bin_abundance_DM_T7 <- left_join(DM_T7_tpm, c2b_filtered_DM_T7, by = "Contig")
+
+# Each MAG has multiple contigs, and each contig/bin has three TPM calculations for the three replicate samples. The below command manipulates the dataframe, summarizes the mean TPM for each bin to get a single value aggregated across samples for each timepoint.
+
+bin_tpm_DM_C_T0 <- bin_abundance_DM_C_T0 %>%
+  filter(!is.na(bin)) %>% 
+  group_by(bin) %>%
+  summarise(across(where(is.numeric), sum, na.rm = TRUE)) %>% 
+  mutate(mean_TPM = rowMeans(across(where(is.numeric))))
+
+bin_tpm_DM_T3 <- bin_abundance_DM_T3 %>%
+  filter(!is.na(bin)) %>% 
+  group_by(bin) %>%
+  summarise(across(where(is.numeric), sum, na.rm = TRUE)) %>% 
+  mutate(mean_TPM = rowMeans(across(where(is.numeric))))
+
+bin_tpm_DM_T7 <- bin_abundance_DM_T7 %>%
+  filter(!is.na(bin)) %>% 
+  group_by(bin) %>%
+  summarise(across(where(is.numeric), sum, na.rm = TRUE)) %>% 
+  mutate(mean_TPM = rowMeans(across(where(is.numeric))))
+
+# I noticed that the TPM calculations across replicate samples were pretty varied (for example, two samples had similar values, but one had an extremely higher/lower value). Taking an an average TPM measurement is sensitive to outliers, which will inflate/deflate the true TPM value. It's recommended that I use either median or trimmed mean. Median is less sensitive to outliers, but I only have three samples so it could still produce skewed results. I decided to go with trimmed mean, which removes a percentage of high/low values prior to calculating the mean.
+
+bin_tpm_DM_C_T0 <- bin_abundance_DM_C_T0 %>%
+  filter(!is.na(bin)) %>%
+  rowwise() %>%
+  mutate(sum_TPM = sum(c_across(where(is.numeric)), na.rm = TRUE),
+         mean_TPM_trimmed = mean(c_across(where(is.numeric)), trim = 0.33, na.rm = TRUE)) %>%
+  ungroup() %>%
+  group_by(bin) %>%
+  summarise(mean_TPM = mean(mean_TPM_trimmed, na.rm = TRUE), .groups = "drop")
+
+bin_tpm_DM_T3 <- bin_abundance_DM_T3 %>%
+  filter(!is.na(bin)) %>%
+  rowwise() %>%
+  mutate(sum_TPM = sum(c_across(where(is.numeric)), na.rm = TRUE),
+         mean_TPM_trimmed = mean(c_across(where(is.numeric)), trim = 0.33, na.rm = TRUE)) %>%
+  ungroup() %>%
+  group_by(bin) %>%
+  summarise(mean_TPM = mean(mean_TPM_trimmed, na.rm = TRUE), .groups = "drop")
+
+bin_tpm_DM_T7 <- bin_abundance_DM_T7 %>%
+  filter(!is.na(bin)) %>%
+  rowwise() %>%
+  mutate(sum_TPM = sum(c_across(where(is.numeric)), na.rm = TRUE),
+         mean_TPM_trimmed = mean(c_across(where(is.numeric)), trim = 0.33, na.rm = TRUE)) %>%
+  ungroup() %>%
+  group_by(bin) %>%
+  summarise(mean_TPM = mean(mean_TPM_trimmed, na.rm = TRUE), .groups = "drop")
+
+# I trimmed by 33% since I only have three samples, so it removes a single outlier sample (high or low) from my average estimation.
+
+# Merge all bins for a single timepoint
+DM_C_T0_taxonomy <- bind_rows(T0_bac,T0_arc) %>%
+  dplyr::rename(bin = user_genome)
+
+tax_with_tpm_DM_C_T0 <- DM_C_T0_taxonomy %>%
+  left_join(bin_tpm_DM_C_T0, by = "bin") %>%
+  mutate(timepoint = case_when(
+    str_detect(bin, "DM_C_T0") ~ "T0",
+    TRUE ~ "unknown"
+  )) %>%
+  filter(
+    !str_starts(order, "UB"),
+    !str_starts(order, "SZ"),
+    !is.na(order),
+    order != ""
+  ) %>% 
+  select(bin, order, timepoint, mean_TPM)
+
+tax_with_tpm_DM_T3 <- T3_bac %>%
+  dplyr::rename(bin = user_genome) %>% 
+  left_join(bin_tpm_DM_T3, by = "bin") %>%
+  mutate(timepoint = case_when(
+    str_detect(bin, "DM_T3") ~ "T3",
+    TRUE ~ "unknown"
+  )) %>%
+  filter(
+    !str_starts(order, "UB"),
+    !str_starts(order, "SZ"),
+    !is.na(order),
+    order != ""
+  ) %>% 
+  select(bin, order, timepoint, mean_TPM)
+
+tax_with_tpm_DM_T7 <- T7_bac %>%
+  dplyr::rename(bin = user_genome) %>% 
+  left_join(bin_tpm_DM_T7, by = "bin") %>%
+  mutate(timepoint = case_when(
+    str_detect(bin, "DM_T7") ~ "T7",
+    TRUE ~ "unknown"
+  )) %>%
+  filter(
+    !str_starts(order, "UB"),
+    !str_starts(order, "SZ"),
+    !is.na(order),
+    order != ""
+  ) %>% 
+  select(bin, order, timepoint, mean_TPM)
+
+# merge all timepoints together for ease of plotting
+timepoints_merged <- bind_rows(
+  tax_with_tpm_DM_C_T0,
+  tax_with_tpm_DM_T3,
+  tax_with_tpm_DM_T7
+)
+
+# create a stacked barchart - not a fan. Hard to see changes of each order across timepoints
+#ggplot(timepoints_merged, aes(x=timepoint, y=log(mean_TPM), fill=order#)) +
+#  geom_bar(stat="identity") +
+#  labs(x="Order", y="Relative Abundance (TPM)") +
+#  theme_minimal()
+
+# another idea -- heatmap
+
+# reshape the merged timepoint data into a matrix
+p <- timepoints_merged %>% 
+  group_by(order, timepoint) %>% 
+  summarise(mean_TPM = mean(mean_TPM, na.rm = TRUE), .groups = "drop") %>% 
+  filter(!is.na(mean_TPM)) %>% 
+  pivot_wider(
+    names_from = timepoint,
+    values_from = mean_TPM,
+    values_fill = 0
+  ) %>% 
+  arrange(order) %>% 
+  select(order, T0, T3, T7)
+
+
+# Convert to matrix with orders as rownames
+p_matrix <- as.matrix(p[,-1])
+rownames(p_matrix) <- p$order
+
+# Log-transform
+p_matrix_log <- log10(p_matrix + 1)
+
+# Create heatmap
+Heatmap(
+  p_matrix_log,
+  name = "TPM (log-transformed)",
+  row_names_side = "left",
+  column_names_rot = 0,
+  col = circlize::colorRamp2(c(0, max(p_matrix_log)), c("white", "blue")),
+  cluster_rows = TRUE,
+  cluster_columns = FALSE
+)
 ```
