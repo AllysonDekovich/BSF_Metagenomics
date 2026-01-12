@@ -657,11 +657,12 @@ library(readr)
 library(dplyr)
 library(circlize)
 library(ComplexHeatmap)
+library(purrr)
 
 
 setwd('/Users/adekovic/OneDrive - University of Tennessee/Shoemaker Lab/Dekovich Research/BSF Metagenomics/analyses/post_metagenomic_processing/01_taxonomy_barplots/')
 
-# read in summary files from GTDB-tk for each timepoint
+# T0, T3, T7 gtdbtk summary files
 T0_bac <- read_tsv('./gtdbtk.bac120_DM_C_T0.summary.tsv') %>% 
   separate(classification, into = c("domain", "phylum", "class", "order", "family", "genus", "species"), sep=";") %>% 
   mutate(across(everything(), ~str_replace(.x, ".*__", "")))
@@ -677,7 +678,7 @@ T7_bac <- read_tsv('./DM_T7_bac120.summary.tsv') %>%
   separate(classification, into = c("domain", "phylum", "class", "order", "family", "genus", "species"), sep=";") %>% 
   mutate(across(everything(), ~str_replace(.x, ".*__", "")))
 
-# Put the names of the final MAGs after DAS/CheckM into lists for each timepoint
+# Filter contig2bin files with final bins after DAS tool/checkM
 DM_C_T0_final <-  c(
   "DM_C_T0bins.112","DM_C_T0bins.21","DM_C_T0bins.347",
   "DM_C_T0bins.423","DM_C_T0bins.9","DM_C_T0bins.134",
@@ -726,14 +727,13 @@ DM_T7_final <- c(
   "DM_T7_bins.66", "DM_T7_bins.67"
 )
 
-# read in contig2bin files for each timepoint. These match the contigs to the MAGs identified by GTDB-tk
+
 c2b_DM_C_T0 <- read_tsv("./rel_abundance_tpm/DM_C_T0/DM_C_T0_metabat2_contig2bin.tsv", col_names = c("Contig", "bin"))
 
 c2b_DM_T3 <- read_tsv("./rel_abundance_tpm/DM_T3/DM_T3_metabat_contig2bin.tsv", col_names = c("Contig", "bin"))
 
 c2b_DM_T7 <- read_tsv("./rel_abundance_tpm/DM_T7/DM_T7_metabat2_contig2bin.tsv", col_names = c("Contig", "bin"))
 
-# Filter these contig2bin lists to only include the final MAGs from the above lists
 c2b_filtered_DM_C_T0 <- c2b_DM_C_T0 %>%
   filter(bin %in% DM_C_T0_final)
 
@@ -743,39 +743,55 @@ c2b_filtered_DM_T3 <- c2b_DM_T3 %>%
 c2b_filtered_DM_T7 <- c2b_DM_T7 %>%
   filter(bin %in% DM_T7_final)
 
-# read in abundance (tpm) files from coverM and merge with the the filtered contig2bin files
 # read in abundance file
 DM_C_T0_tpm <- read_tsv("./rel_abundance_tpm/DM_C_T0/DM_C_T0_tpm.tsv")
 
+# 12/9/2025: ran each DM_C_T0 sample separately through coverM and merged into single file.
+DM_C_T0_tpm_refined_list <- list.files(path = "rel_abundance_tpm/DM_C_T0",
+                                  pattern="*_L001_tpm.tsv",
+                                  full.names = TRUE)
+DM_C_T0_tpm_refined_files <- lapply(DM_C_T0_tpm_refined_list, read_tsv)
+DM_C_T0_tpm_refined_merged <- reduce(DM_C_T0_tpm_refined_files, inner_join, by = "Contig")
+
+
 DM_T3_tpm <- read_tsv("./rel_abundance_tpm/DM_T3/DM_T3_tpm.tsv")
+
+# 12/9/2025: ran each DM_T3 sample separately through coverM and merged into single file.
+DM_T3_tpm_refined_list <- list.files(path = "rel_abundance_tpm/DM_T3",
+                                       pattern="*_L001_tpm.tsv",
+                                       full.names = TRUE)
+DM_T3_tpm_refined_files <- lapply(DM_T3_tpm_refined_list, read_tsv)
+DM_T3_tpm_refined_merged <- reduce(DM_T3_tpm_refined_files, inner_join, by = "Contig")
 
 DM_T7_tpm <- read_tsv("./rel_abundance_tpm/DM_T7/DM_T7_tpm.tsv")
 
+# 12/9/2025: ran each DM_T7 sample separately through coverM and merged into single file.
+DM_T7_tpm_refined_list <- list.files(path = "rel_abundance_tpm/DM_T7",
+                                     pattern="*_L001_tpm.tsv",
+                                     full.names = TRUE)
+DM_T7_tpm_refined_files <- lapply(DM_T7_tpm_refined_list, read_tsv)
+DM_T7_tpm_refined_merged <- reduce(DM_T7_tpm_refined_files, inner_join, by = "Contig")
+
+
 bin_abundance_DM_C_T0 <- inner_join(DM_C_T0_tpm, c2b_filtered_DM_C_T0, by = "Contig")
+
+#12/9/2025: combine refined bin abundance to the filtered c2b files
+bin_abundance_DM_C_T0 <- inner_join(DM_C_T0_tpm_refined_merged, c2b_filtered_DM_C_T0, by = "Contig")
+
 bin_abundance_DM_T3 <- inner_join(DM_T3_tpm, c2b_filtered_DM_T3, by = "Contig")
+#12/9/2025: combine refined bin abundance to the filtered c2b files
+bin_abundance_DM_T3 <- inner_join(DM_T3_tpm_refined_merged, c2b_filtered_DM_T3, by = "Contig")
+
 bin_abundance_DM_T7 <- left_join(DM_T7_tpm, c2b_filtered_DM_T7, by = "Contig")
+#12/9/2025: combine refined bin abundance to the filtered c2b files
+bin_abundance_DM_T7 <- inner_join(DM_T7_tpm_refined_merged, c2b_filtered_DM_T7, by = "Contig")
 
-# Each MAG has multiple contigs, and each contig/bin has three TPM calculations for the three replicate samples. The below command manipulates the dataframe, summarizes the mean TPM for each bin to get a single value aggregated across samples for each timepoint.
-
+# Summarize TPM by bin (sum across all contigs per bin)
 bin_tpm_DM_C_T0 <- bin_abundance_DM_C_T0 %>%
   filter(!is.na(bin)) %>% 
   group_by(bin) %>%
   summarise(across(where(is.numeric), sum, na.rm = TRUE)) %>% 
   mutate(mean_TPM = rowMeans(across(where(is.numeric))))
-
-bin_tpm_DM_T3 <- bin_abundance_DM_T3 %>%
-  filter(!is.na(bin)) %>% 
-  group_by(bin) %>%
-  summarise(across(where(is.numeric), sum, na.rm = TRUE)) %>% 
-  mutate(mean_TPM = rowMeans(across(where(is.numeric))))
-
-bin_tpm_DM_T7 <- bin_abundance_DM_T7 %>%
-  filter(!is.na(bin)) %>% 
-  group_by(bin) %>%
-  summarise(across(where(is.numeric), sum, na.rm = TRUE)) %>% 
-  mutate(mean_TPM = rowMeans(across(where(is.numeric))))
-
-# I noticed that the TPM calculations across replicate samples were pretty varied (for example, two samples had similar values, but one had an extremely higher/lower value). Taking an an average TPM measurement is sensitive to outliers, which will inflate/deflate the true TPM value. It's recommended that I use either median or trimmed mean. Median is less sensitive to outliers, but I only have three samples so it could still produce skewed results. I decided to go with trimmed mean, which removes a percentage of high/low values prior to calculating the mean.
 
 bin_tpm_DM_C_T0 <- bin_abundance_DM_C_T0 %>%
   filter(!is.na(bin)) %>%
@@ -787,6 +803,12 @@ bin_tpm_DM_C_T0 <- bin_abundance_DM_C_T0 %>%
   summarise(mean_TPM = mean(mean_TPM_trimmed, na.rm = TRUE), .groups = "drop")
 
 bin_tpm_DM_T3 <- bin_abundance_DM_T3 %>%
+  filter(!is.na(bin)) %>% 
+  group_by(bin) %>%
+  summarise(across(where(is.numeric), sum, na.rm = TRUE)) %>% 
+  mutate(mean_TPM = rowMeans(across(where(is.numeric))))
+
+bin_tpm_DM_T3 <- bin_abundance_DM_T3 %>%
   filter(!is.na(bin)) %>%
   rowwise() %>%
   mutate(sum_TPM = sum(c_across(where(is.numeric)), na.rm = TRUE),
@@ -794,6 +816,12 @@ bin_tpm_DM_T3 <- bin_abundance_DM_T3 %>%
   ungroup() %>%
   group_by(bin) %>%
   summarise(mean_TPM = mean(mean_TPM_trimmed, na.rm = TRUE), .groups = "drop")
+
+bin_tpm_DM_T7 <- bin_abundance_DM_T7 %>%
+  filter(!is.na(bin)) %>% 
+  group_by(bin) %>%
+  summarise(across(where(is.numeric), sum, na.rm = TRUE)) %>% 
+  mutate(mean_TPM = rowMeans(across(where(is.numeric))))
 
 bin_tpm_DM_T7 <- bin_abundance_DM_T7 %>%
   filter(!is.na(bin)) %>%
@@ -804,9 +832,7 @@ bin_tpm_DM_T7 <- bin_abundance_DM_T7 %>%
   group_by(bin) %>%
   summarise(mean_TPM = mean(mean_TPM_trimmed, na.rm = TRUE), .groups = "drop")
 
-# I trimmed by 33% since I only have three samples, so it removes a single outlier sample (high or low) from my average estimation.
-
-# Merge all bins for a single timepoint
+# merge all bins for a single timepoint
 DM_C_T0_taxonomy <- bind_rows(T0_bac,T0_arc) %>%
   dplyr::rename(bin = user_genome)
 
@@ -854,7 +880,6 @@ tax_with_tpm_DM_T7 <- T7_bac %>%
   ) %>% 
   select(bin, order, timepoint, mean_TPM)
 
-# merge all timepoints together for ease of plotting
 timepoints_merged <- bind_rows(
   tax_with_tpm_DM_C_T0,
   tax_with_tpm_DM_T3,
@@ -865,7 +890,7 @@ timepoints_merged <- bind_rows(
 #ggplot(timepoints_merged, aes(x=timepoint, y=log(mean_TPM), fill=order#)) +
 #  geom_bar(stat="identity") +
 #  labs(x="Order", y="Relative Abundance (TPM)") +
-#  theme_minimal()
+#  theme_minimal() 
 
 # another idea -- heatmap
 
@@ -890,14 +915,25 @@ rownames(p_matrix) <- p$order
 # Log-transform
 p_matrix_log <- log10(p_matrix + 1)
 
-# Create heatmap
+# create custom discrete color palette
+breaks <- c(0,0.5, max(p_matrix_log, na.rm=TRUE))
+colors <- c("white", "lightpink", "magenta")
+
+#create function for color mapping
+col_fun <- colorRamp2(breaks, colors)
+
+
+# Create heatmap with TPM labels
 Heatmap(
   p_matrix_log,
-  name = "TPM (log-transformed)",
+  name = "TPM (log)",
   row_names_side = "left",
   column_names_rot = 0,
-  col = circlize::colorRamp2(c(0, max(p_matrix_log)), c("white", "blue")),
+  col = col_fun,
   cluster_rows = TRUE,
-  cluster_columns = FALSE
+  cluster_columns = FALSE,
+  cell_fun = function(j, i, x, y, width, height, fill) {
+    grid.text(sprintf("%.2f", p_matrix_log[i, j]), x, y, gp = gpar(fontsize = 10))
+  }
 )
 ```
