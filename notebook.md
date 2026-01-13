@@ -937,3 +937,141 @@ Heatmap(
   }
 )
 ```
+
+Alpha/beta diversity calculations using **vegan** in R.
+```
+library(vegan)
+library(FSA)
+library(tidyverse)
+
+## Alpha/beta diversity statistics
+tax_with_tpm_DM_C_T0_alpha <- DM_C_T0_taxonomy %>%
+  left_join(bin_abundance_DM_C_T0, by = "bin") %>%
+  mutate(timepoint = case_when(
+    str_detect(bin, "DM_C_T0") ~ "T0",
+    TRUE ~ "unknown"
+  )) %>%
+  filter(
+    !str_starts(order, "UB"),
+    !str_starts(order, "SZ"),
+    !is.na(order),
+    order != ""
+  ) %>% 
+  select(order, `DM_C_T0_final.contigs.fa/DM_C_T0_r1_Owings_S13_L001_R1_host_trimmed.fastq.gz TPM`, `DM_C_T0_final.contigs.fa/DM_C_T0_r2_Owings_S14_L001_R1_host_trimmed.fastq.gz TPM`, `DM_C_T0_final.contigs.fa/DM_C_T0_r3_Owings_S15_L001_R1_host_trimmed.fastq.gz TPM`) %>% 
+  group_by(order) %>% 
+  summarise(across(where(is.numeric),
+                   sum,
+                   na.rm=TRUE)) %>% 
+  ungroup()
+
+tax_with_tpm_DM_T3_alpha <- T3_bac %>%
+  dplyr::rename(bin = user_genome) %>% 
+  left_join(bin_abundance_DM_T3, by = "bin") %>%
+  mutate(timepoint = case_when(
+    str_detect(bin, "DM_T3") ~ "T3",
+    TRUE ~ "unknown"
+  )) %>%
+  filter(
+    !str_starts(order, "UB"),
+    !str_starts(order, "SZ"),
+    !is.na(order),
+    order != ""
+  ) %>% 
+  select(order, `DM_T3_final.contigs.fa/DM_T3_r1_Owings_S16_L001_R1_host_trimmed.fastq.gz TPM`, `DM_T3_final.contigs.fa/DM_T3_r3_Owings_S17_L001_R1_host_trimmed.fastq.gz TPM`, `DM_T3_final.contigs.fa/DM_T3_r4_Owings_S18_L001_R1_host_trimmed.fastq.gz TPM`) %>% 
+  group_by(order) %>% 
+  summarise(across(where(is.numeric),
+                   sum,
+                   na.rm=TRUE)) %>% 
+  ungroup()
+
+tax_with_tpm_DM_T7_alpha <- T7_bac %>%
+  dplyr::rename(bin = user_genome) %>% 
+  left_join(bin_abundance_DM_T7, by = "bin") %>%
+  mutate(timepoint = case_when(
+    str_detect(bin, "DM_T7") ~ "T7",
+    TRUE ~ "unknown"
+  )) %>%
+  filter(
+    !str_starts(order, "UB"),
+    !str_starts(order, "SZ"),
+    !is.na(order),
+    order != ""
+  ) %>% 
+  select(order, `DM_T7_final.contigs.fa/DM_T7_r1_Owings_S19_L001_R1_host_trimmed.fastq.gz TPM`, `DM_T7_final.contigs.fa/DM_T7_r2_Owings_S20_L001_R1_host_trimmed.fastq.gz TPM`, `DM_T7_final.contigs.fa/DM_T7_r4_Owings_S21_L001_R1_host_trimmed.fastq.gz TPM`) %>% 
+  group_by(order) %>% 
+  summarise(across(where(is.numeric),
+                   sum,
+                   na.rm=TRUE)) %>% 
+  ungroup()
+
+timepoints_merged_abundance <- tax_with_tpm_DM_C_T0_alpha %>% 
+  full_join(tax_with_tpm_DM_T3_alpha, by = "order") %>% 
+  full_join(tax_with_tpm_DM_T7_alpha, by = "order") %>% 
+  mutate(across(where(is.numeric), ~replace_na(.x, 0)))
+
+mat <- timepoints_merged_abundance %>% 
+  select(-order) %>% 
+  as.matrix() %>% 
+  t()
+
+# create metadata, which indicates timepoint and replicate number for each sample
+metadata <- data.frame(
+  SampleID = colnames(timepoints_merged_abundance)[-1],
+  Timepoint = str_extract(colnames(timepoints_merged_abundance)[-1], "T0|T3|T7"),
+  Replicate = as.integer(
+    str_remove(
+      str_extract(
+        colnames(timepoints_merged_abundance)[-1],
+        "r[0-9]+"),"r")))
+rownames(metadata) <- metadata$SampleID
+
+# check that rownames(mat) match metadata$SampleID
+all(rownames(mat) == metadata$SampleID)
+
+# alpha/beta diversity with vegan
+alpha <- data.frame(
+  SampleID = rownames(mat),
+  Shannon  = diversity(mat, index = "shannon"),
+  Simpson  = diversity(mat, index = "simpson"),
+  Richness = specnumber(mat)
+) %>%
+  left_join(metadata, by = "SampleID")
+
+kruskal.test(Shannon ~ Timepoint, data = alpha)  # p < 0.01 expected
+dunn_result <- dunnTest(Shannon ~ Timepoint, 
+                        data = alpha, 
+                        method = "hochberg") 
+
+
+ggplot(alpha, aes(x = Timepoint, y = Shannon)) +
+  geom_boxplot() +
+  geom_point(position = position_jitter(width = 0.1)) +
+  theme_bw()
+
+# beta diversity
+dist_bc <- vegdist(mat, method="bray")
+
+# PERMANOVA (main test)
+perm <- adonis2(dist_bc ~ Timepoint, data = metadata, permutations = 999)
+print(perm)
+
+# beta dispersion (homogeneity of variance)
+bd <- betadisper(dist_bc, group = metadata$Timepoint)
+anova(bd)  # test dispersion differences
+plot(bd)   # visualize
+
+# NMDS ordination for visualization
+set.seed(42)
+nmds <- metaMDS(dist_bc, k = 2, trymax = 100)
+scores_nmds <- as.data.frame(scores(nmds, display = "sites"))
+scores_nmds$SampleID <- rownames(scores_nmds)
+scores_nmds <- left_join(scores_nmds, metadata, by = "SampleID")
+
+# Plot
+ggplot(scores_nmds, aes(NMDS1, NMDS2, color = Timepoint)) +
+  geom_point(size = 4) +
+  scale_color_manual(values = c("T0" = "blue", "T3" = "orange", "T7" = "red")) +
+  labs(title = "Beta Diversity via NMDS Ordination",
+       subtitle = "Using Bray-Curtis as distance method") +
+  theme_minimal()
+```
