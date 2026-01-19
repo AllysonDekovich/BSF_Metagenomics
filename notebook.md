@@ -598,10 +598,11 @@ gtdbtk classify_wf \
 ```
 
 ## Data Analyses - Post-Metagenomic Processing
+### Taxonomic Composition
 
 Now that the MAGs are complete, I will start post-metagenomic processing analyses to understand patterns/compositions of MAGs across timepoints. The first thing I want to do is identify the taxa and corresponding relative abundances within each timepoint. 
 
-To calculate relative abundance, use `coverM`:
+First, I used 'coverM' to calculate the relative abundance of all contigs within the 9 samples:
 
 ```
 #!/bin/bash
@@ -937,8 +938,24 @@ Heatmap(
   }
 )
 ```
+### Diversity statistics - alpha and beta
 
-Alpha/beta diversity calculations using **vegan** in R.
+I calculated alpha and beta diversity among timepoints using the R package **vegan**.
+
+**Alpha Diversity**: measures the variety and abundance of species within a **single** community/timepoint/sample.
+
+* Considers **richness** (the total number of different species present) and **evenness** (abundance similarities of species present).<br>
+* Common metrics include:<br>
+	* **Shannon Diversity**: considers BOTH evenness and richness.<br>
+	* **Simpson Diversity**: measures the probability of picking two individuals of the same species (higher values mean lower diversity).<br>
+
+**Beta diversity**: measures the difference in species composition **among** communities/timepoints/samples.
+* Measures the degree of dissimilarity between samples using **Bray-Curtis** measurements (0 = identical, 1 = different).<br>
+* Common metrics include:
+  	* **PERMANOVA**: a statistical test that determines if groups differ in community composition (do all three timepoints have similar/distinct residents?).
+  	* **Beta dispersion test**: a test that determines if groups have equal within-group variation in community composition (do all three samples have similar size/variability).
+
+
 ```
 library(vegan)
 library(FSA)
@@ -1075,3 +1092,45 @@ ggplot(scores_nmds, aes(NMDS1, NMDS2, color = Timepoint)) +
        subtitle = "Using Bray-Curtis as distance method") +
   theme_minimal()
 ```
+
+### Functional Annotation of MAGs
+
+To better interpret the taxonomic classification/ID, I now want to functionally annotate the MAGs to better interpret shifts in composition between timepoints and to link taxonomy to metabolic potential.
+
+First, I use `Prokka` to predict genes and assigns putative functions for each MAG. The program takes the assembled FASTA sequences of each MAG and produces a standard annotation files (GFF, GBK, FAA, FNA, etc.).
+
+Below is the command to run `Prokka` for the T0 timestamp. I replicated this script for the other timepoints.
+
+```
+#!/bin/bash
+#SBATCH --job-name=prokka_DM_C_T0_bac
+#SBATCH --array=1-11
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=8
+#SBATCH --time=48:00:00
+#SBATCH -A ACF-UTK0032
+#SBATCH --partition=long
+#SBATCH --qos=long
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=adekovic@vols.utk.edu
+#SBATCH --mem=16G
+
+infile=$(sed -n "${SLURM_ARRAY_TASK_ID}p" T0_bac_samples.txt)
+
+prefix=$(basename "$infile" | sed 's/.fa*//g')
+
+prokka \
+--outdir "./output/${prefix}" \
+--prefix "${prefix}" \
+--kingdom Bacteria \
+--gcode 11 \
+--metagenome \
+--mincontiglen 1000 \
+--cpus 8 \
+"${infile}"
+```
+
+* `--kingdom`: makes sure the program uses bacterial databases.
+* `--gcode`: specifies the NCBI translation table 11 ("Bacterial, Archael, and Plant Plastid" genetic code) to ensure correct codon-to-amino-acid translation when calling CDSs.
+* `--metagenome`: optimizes the gene prediction for fragmented/metagenomic assemblies.
+* `--mincontiglen`: sets a minimum contig length to reduce noise from smaller contigs, which might have lesser reliable gene predictions.
