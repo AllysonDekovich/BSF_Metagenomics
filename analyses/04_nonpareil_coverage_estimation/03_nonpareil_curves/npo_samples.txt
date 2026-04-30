@@ -1,0 +1,10 @@
+File	Name	Color
+DM_C_T0_r1_Owings_S13_L001_R1_trimmed.npo	T0_r1	"#D27D2D"
+DM_C_T0_r2_Owings_S14_L001_R1_trimmed.npo	T0_r2	"#7B3F00"
+DM_C_T0_r3_Owings_S15_L001_R1_trimmed.npo	T0_r3	"#6E260E"
+DM_T3_r1_Owings_S16_L001_R1_trimmed.npo	T3_r1	"#FF69B4"
+DM_T3_r3_Owings_S17_L001_R1_trimmed.npo	T3_r3	"#FF00FF"
+DM_T3_r4_Owings_S18_L001_R1_trimmed.npo	T3_r4	"#F8C8DC"
+DM_T7_r1_Owings_S19_L001_R1_trimmed.npo	T7_r1	"#0047AB"
+DM_T7_r2_Owings_S20_L001_R1_trimmed.npo	T7_r2	"#6495ED"
+DM_T7_r4_Owings_S21_L001_R1_trimmed.npo	T7_r4	"#CCCCFF"
